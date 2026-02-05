@@ -3,13 +3,16 @@ from unittest.mock import patch, MagicMock
 from brokerage_parser.orchestrator import process_statement
 from brokerage_parser.models import ParsedStatement
 
-@patch("brokerage_parser.orchestrator.extract_text")
+@patch("brokerage_parser.orchestrator.extract_text_with_layout")
 @patch("brokerage_parser.orchestrator.detect_broker")
 @patch("brokerage_parser.orchestrator.get_parser")
 def test_process_statement_success(mock_get_parser, mock_detect, mock_extract, tmp_path):
     # Setup Mocks
     mock_pdf = tmp_path / "dummy.pdf"
     mock_pdf.touch()
+
+    # Create dummy pdf content so PyMuPDF doesn't error out even if mocked (good practice)
+    # But since we are mocking extract_text_with_layout, the file content doesn't matter much for that call
 
     mock_extract.return_value = {1: "Schwab Header\nTransaction Detail\n..."}
     mock_detect.return_value = ("schwab", 0.9)
@@ -35,7 +38,7 @@ def test_process_statement_success(mock_get_parser, mock_detect, mock_extract, t
     mock_parser_instance.parse.assert_called_once()
 
 
-@patch("brokerage_parser.orchestrator.extract_text")
+@patch("brokerage_parser.orchestrator.extract_text_with_layout")
 @patch("brokerage_parser.orchestrator.detect_broker")
 def test_process_statement_unknown_broker(mock_detect, mock_extract, tmp_path):
     mock_pdf = tmp_path / "unknown.pdf"

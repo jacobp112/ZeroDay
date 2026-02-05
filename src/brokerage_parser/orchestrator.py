@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 import logging
-from brokerage_parser.extraction import extract_text, extract_tables
+from brokerage_parser.extraction import extract_text, extract_tables, extract_text_with_layout
 from brokerage_parser.detection import detect_broker
 from brokerage_parser.parsers import get_parser
 from brokerage_parser.models import ParsedStatement
@@ -45,7 +45,8 @@ def process_statement(pdf_path: str) -> ParsedStatement:
             all_tables.extend(extracted_tables_map[page_num])
 
         # Text extraction (still needed for detection and fallback)
-        pages_text = extract_text(path)
+        # Use layout-aware extraction to cleaner columns if regex fallback is needed
+        pages_text = extract_text_with_layout(path)
         full_text = "\n".join(pages_text.values())
 
     except Exception as e:
