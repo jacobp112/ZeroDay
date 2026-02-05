@@ -4,6 +4,8 @@ from brokerage_parser.parsers.schwab import SchwabParser
 from brokerage_parser.parsers.fidelity import FidelityParser
 from brokerage_parser.parsers.vanguard import VanguardParser
 
+__all__ = ["get_parser", "get_supported_brokers"]
+
 def get_parser(broker_name: str, text: str) -> Optional[Parser]:
     """
     Factory function to return the correct parser instance.

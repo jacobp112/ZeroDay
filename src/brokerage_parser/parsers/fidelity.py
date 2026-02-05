@@ -10,8 +10,9 @@ class FidelityParser(Parser):
         return "Fidelity"
 
     def _parse_account_number(self) -> Optional[str]:
-        # Fidelity often has "Account Number X12-345678"
-        match = self._find_pattern(r"Account Number\s*([A-Z\d-]+)")
+        # Fidelity "Account Number X12-345678" or similar
+        # Tightened regex to avoid matching random text
+        match = self._find_pattern(r"Account Number\s*([A-Z\d-]{8,})")
         return match.group(1) if match else None
 
     def _parse_statement_dates(self) -> Optional[tuple[date, date, date]]:

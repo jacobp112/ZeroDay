@@ -12,9 +12,13 @@ class Parser(ABC):
 
     def parse(self) -> ParsedStatement:
         """Main parsing method."""
+        acc_num = self._parse_account_number() or "Unknown"
+        # We default type to "Brokerage" for now as we don't parse it yet
+        account_summary = AccountSummary(account_number=acc_num, account_type="Brokerage")
+
         statement = ParsedStatement(
             broker=self.get_broker_name(),
-            account_number=self._parse_account_number() or "Unknown"
+            account=account_summary
         )
 
         dates = self._parse_statement_dates()

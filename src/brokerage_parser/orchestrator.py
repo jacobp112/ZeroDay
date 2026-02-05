@@ -57,7 +57,8 @@ def process_statement(pdf_path: str) -> ParsedStatement:
 
     if broker_name == "unknown":
         logger.warning("Unknown broker. Parsing cannot proceed.")
-        stmt = ParsedStatement(broker="Unknown", account_number="Unknown")
+        # Minimal empty statement
+        stmt = ParsedStatement(broker="Unknown")
         stmt.parse_errors.append("Could not detect broker.")
         return stmt
 
@@ -65,7 +66,7 @@ def process_statement(pdf_path: str) -> ParsedStatement:
     parser = get_parser(broker_name, full_text)
     if not parser:
         logger.error(f"No parser implementation found for: {broker_name}")
-        stmt = ParsedStatement(broker=broker_name, account_number="Unknown")
+        stmt = ParsedStatement(broker=broker_name)
         stmt.parse_errors.append(f"No parser available for broker: {broker_name}")
         return stmt
 
@@ -76,6 +77,6 @@ def process_statement(pdf_path: str) -> ParsedStatement:
         return statement
     except Exception as e:
         logger.error(f"Parsing error: {e}")
-        stmt = ParsedStatement(broker=broker_name, account_number="Unknown")
+        stmt = ParsedStatement(broker=broker_name)
         stmt.parse_errors.append(f"Parsing exception: {str(e)}")
         return stmt

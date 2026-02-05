@@ -15,7 +15,11 @@ def test_process_statement_success(mock_get_parser, mock_detect, mock_extract, t
     mock_detect.return_value = ("schwab", 0.9)
 
     mock_parser_instance = MagicMock()
-    mock_statement = ParsedStatement(broker="Schwab", account_number="123")
+    # Mock ParsedStatement with AccountSummary
+    mock_account = MagicMock()
+    mock_account.account_number = "123"
+
+    mock_statement = ParsedStatement(broker="Schwab", account=mock_account)
     mock_parser_instance.parse.return_value = mock_statement
     mock_get_parser.return_value = mock_parser_instance
 
@@ -24,7 +28,7 @@ def test_process_statement_success(mock_get_parser, mock_detect, mock_extract, t
 
     # Verify
     assert result.broker == "Schwab"
-    assert result.account_number == "123"
+    assert result.account.account_number == "123"
     mock_extract.assert_called_once()
     mock_detect.assert_called_once()
     mock_get_parser.assert_called_once()

@@ -74,7 +74,7 @@ class AccountSummary:
 @dataclass
 class ParsedStatement:
     broker: str
-    account_number: str
+    account: Optional[AccountSummary] = None
     statement_date: Optional[date] = None
     period_start: Optional[date] = None
     period_end: Optional[date] = None
@@ -85,7 +85,7 @@ class ParsedStatement:
     def to_dict(self):
         return {
             "broker": self.broker,
-            "account_number": self.account_number,
+            "account": self.account.to_dict() if self.account else None,
             "statement_date": self.statement_date.isoformat() if self.statement_date else None,
             "period_start": self.period_start.isoformat() if self.period_start else None,
             "period_end": self.period_end.isoformat() if self.period_end else None,
