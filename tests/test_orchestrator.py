@@ -50,7 +50,7 @@ def test_process_statement_unknown_broker(mock_detect, mock_extract, tmp_path):
     result = process_statement(str(mock_pdf))
 
     assert result.broker == "Unknown"
-    assert "Could not detect broker." in result.parse_errors
+    assert "Could not detect broker and no usable tables found." in result.parse_errors
 
 def test_process_statement_file_not_found():
     with pytest.raises(ValueError):

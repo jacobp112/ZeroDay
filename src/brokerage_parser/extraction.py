@@ -158,3 +158,168 @@ def extract_text(pdf_path: Path) -> Dict[int, str]:
 
     except Exception as e:
         raise Exception(f"Failed to extract text from {pdf_path}: {str(e)}")
+
+
+def detect_implicit_columns(lines: List[str], min_gap: int = 3, min_lines: int = 5) -> List[int]:
+    """
+    Detect column boundaries by finding consistent whitespace gaps.
+
+    Analyzes character positions across multiple lines to find X-positions
+    where whitespace consistently appears, indicating column separations.
+
+    Args:
+        lines: Text lines to analyze
+        min_gap: Minimum consecutive spaces to consider a gap
+        min_lines: Minimum lines that must have gap at same position
+
+    Returns:
+        List of X positions where columns split (sorted)
+    """
+    if not lines or len(lines) < min_lines:
+        return []
+
+    # Filter out empty/very short lines
+    valid_lines = [line for line in lines if len(line.strip()) > 10]
+    if len(valid_lines) < min_lines:
+        return []
+
+    # Find the max line length to establish the analysis width
+    max_len = max(len(line) for line in valid_lines)
+    if max_len < 20:
+        return []
+
+    # For each position, count how many lines have a space there
+    # A column gap is where most lines have spaces
+    space_counts = [0] * max_len
+
+    for line in valid_lines:
+        padded = line.ljust(max_len)
+        for i, char in enumerate(padded):
+            if char == ' ':
+                space_counts[i] += 1
+
+    # Find regions where most lines (>= threshold) have spaces
+    threshold = len(valid_lines) * 0.7  # 70% of lines must have space
+
+    # Find gap regions (consecutive positions where space_count >= threshold)
+    gap_regions = []  # List of (start, end) tuples
+    in_gap = False
+    gap_start = 0
+
+    for i, count in enumerate(space_counts):
+        if count >= threshold:
+            if not in_gap:
+                gap_start = i
+                in_gap = True
+        else:
+            if in_gap:
+                gap_end = i
+                gap_length = gap_end - gap_start
+                if gap_length >= min_gap:
+                    gap_regions.append((gap_start, gap_end))
+                in_gap = False
+
+    # Don't add gap at end - trailing spaces are not column boundaries
+
+    # Convert gap regions to column boundaries
+    # Use the start of each gap as the split point
+    # Skip the first gap if it starts at position 0 (leading whitespace)
+    # Also skip gaps that would result in very narrow final columns
+    column_boundaries = []
+    for start, end in gap_regions:
+        if start > 0 and end < max_len - 2:  # Skip leading whitespace and trailing gaps
+            column_boundaries.append(start)
+
+    return column_boundaries
+
+
+def split_line_by_columns(line: str, column_positions: List[int]) -> List[str]:
+    """
+    Split a single line into cells based on detected column positions.
+
+    Args:
+        line: The text line to split
+        column_positions: List of X positions where columns split
+
+    Returns:
+        List of cell strings (stripped of whitespace)
+    """
+    if not column_positions:
+        return [line.strip()] if line.strip() else []
+
+    cells = []
+    prev_pos = 0
+
+    for pos in column_positions:
+        if pos <= len(line):
+            cell = line[prev_pos:pos].strip()
+            cells.append(cell)
+            prev_pos = pos
+        else:
+            # Line is shorter than expected column position
+            cell = line[prev_pos:].strip() if prev_pos < len(line) else ""
+            cells.append(cell)
+            prev_pos = len(line)
+
+    # Add remaining content after last column boundary
+    if prev_pos < len(line):
+        cells.append(line[prev_pos:].strip())
+    else:
+        cells.append("")
+
+    return cells
+
+
+def text_to_implicit_table(text: str, min_gap: int = 3, min_lines: int = 5) -> List[List[str]]:
+    """
+    Convert raw text to a table structure using implicit column detection.
+
+    Combines detect_implicit_columns() and split_line_by_columns() to
+    produce a table in the same format as find_tables() output.
+
+    Args:
+        text: Raw text with layout preserved
+        min_gap: Minimum consecutive spaces to consider a gap
+        min_lines: Minimum lines that must have gap at same position
+
+    Returns:
+        Table as list of rows, where each row is list of cell strings.
+        Returns empty list if no columns detected or text is not tabular.
+    """
+    if not text or not text.strip():
+        return []
+
+    lines = text.split('\n')
+
+    # Filter to non-empty lines
+    non_empty_lines = [line for line in lines if line.strip()]
+    if len(non_empty_lines) < min_lines:
+        return []
+
+    # Detect column boundaries
+    column_positions = detect_implicit_columns(non_empty_lines, min_gap, min_lines)
+
+    if not column_positions:
+        # No columns detected - text is not tabular
+        return []
+
+    # Split each line by detected columns
+    table = []
+    for line in non_empty_lines:
+        row = split_line_by_columns(line, column_positions)
+        # Only include rows that have some content
+        if any(cell for cell in row):
+            table.append(row)
+
+    # Validate: table should have consistent column count
+    if not table:
+        return []
+
+    # Normalize column count (pad shorter rows)
+    max_cols = max(len(row) for row in table)
+    for row in table:
+        while len(row) < max_cols:
+            row.append("")
+
+    return table
+

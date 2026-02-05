@@ -3,6 +3,7 @@ from brokerage_parser.parsers.base import Parser
 from brokerage_parser.parsers.schwab import SchwabParser
 from brokerage_parser.parsers.fidelity import FidelityParser
 from brokerage_parser.parsers.vanguard import VanguardParser
+from brokerage_parser.parsers.generic import GenericParser
 from brokerage_parser.extraction import TableData
 
 __all__ = ["get_parser", "get_supported_brokers"]
@@ -28,8 +29,12 @@ def get_parser(broker_name: str, text: str, tables: Optional[List[TableData]] = 
         return FidelityParser(text, tables)
     elif broker == "vanguard":
         return VanguardParser(text, tables)
-    else:
-        return None
+
+    # NEW: If unknown broker but tables exist, try generic
+    if broker == "unknown" and tables:
+        return GenericParser(text, tables)
+
+    return None
 
 def get_supported_brokers() -> list[str]:
     return ["schwab", "fidelity", "vanguard"]
