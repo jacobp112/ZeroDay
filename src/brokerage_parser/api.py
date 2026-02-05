@@ -13,9 +13,10 @@ from dataclasses import asdict, is_dataclass
 from datetime import date
 from decimal import Decimal
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, status, Query
+from fastapi import FastAPI, File, HTTPException, UploadFile, status, Query, Body
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from brokerage_parser import orchestrator, storage
 from brokerage_parser.reporting.models import ClientReport
+from brokerage_parser.reporting.engine import ReportingEngine
 
 logger = logging.getLogger(__name__)
 
@@ -181,16 +183,13 @@ app = FastAPI(
     terms_of_service="https://parsefin.io/terms",
 )
 
-# CORS Configuration
-origins = [
-    "http://localhost:5173",  # Vite default
-    "http://localhost:3000",  # React default
-]
+# CORS Configuration - Allow all origins during development
+origins = ["*"]  # TODO: Restrict in production
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True,
+    allow_credentials=False,  # Must be False when using "*"
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -411,7 +410,11 @@ async def parse_statement(
         logger.info(f"Processing uploaded file: {file.filename} -> {temp_path}")
 
         # 3. Process the statement using the orchestrator (with optional source tracking)
-        report: ClientReport = orchestrator.process_statement(temp_path, include_sources=include_sources)
+        statement = orchestrator.process_statement(temp_path, include_sources=include_sources)
+
+        # 4. Generate the client report from the parsed statement
+        reporting_engine = ReportingEngine()
+        report: ClientReport = reporting_engine.generate_report(statement)
 
         # 4. Store the document for later retrieval (if successful parse)
         # We re-read the temp file to calculate ID and store
@@ -482,3 +485,133 @@ async def get_document_content(doc_id: str):
         raise HTTPException(status_code=404, detail="Document not found")
 
     return FileResponse(path, media_type="application/pdf", filename=f"{doc_id}.pdf")
+
+
+@app.get(
+    "/v1/documents/{doc_id}/report",
+    tags=["Parsing"],
+    summary="Get Parsed Report",
+    description="Retrieve the stored structured JSON report for a processed document.",
+    responses={
+        200: {
+            "description": "JSON report",
+        },
+        404: {"description": "Report not found"}
+    }
+)
+async def get_document_report(doc_id: str):
+    """
+    Retrieve the parsed JSON report for a given document ID.
+    Used by the frontend to load the draft for editing.
+
+    Transforms the stored ParsedStatement format to the frontend ParseResponse format.
+    """
+    report = storage.get_report(doc_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    # Transform from ParsedStatement format to ParseResponse format
+    frontend_report = transform_stored_to_frontend(report, doc_id)
+    return frontend_report
+
+
+def transform_stored_to_frontend(stored: Dict[str, Any], doc_id: str) -> Dict[str, Any]:
+    """
+    Transform stored ParsedStatement JSON to frontend ParseResponse format.
+
+    ParsedStatement has: broker, account, positions, transactions, etc.
+    ParseResponse has: metadata, portfolio_summary, holdings, transactions
+    """
+    # Extract values with defaults
+    broker = stored.get("broker", "Unknown")
+    account = stored.get("account", {})
+    positions = stored.get("positions", [])
+    transactions = stored.get("transactions", [])
+    statement_date = stored.get("statement_date", "")
+
+    # Calculate portfolio summary from positions
+    total_value = sum(float(p.get("market_value", 0) or 0) for p in positions)
+
+    # Build metadata
+    metadata = {
+        "client_name": "",  # Not in ParsedStatement
+        "report_date": statement_date,
+        "broker_name": broker,
+        "account_number": account.get("account_number") if isinstance(account, dict) else str(account),
+        "document_id": doc_id,
+    }
+
+    # Build portfolio summary
+    portfolio_summary = {
+        "total_value_gbp": f"{total_value:.2f}",
+        "cash_value_gbp": "0.00",
+        "investments_value_gbp": f"{total_value:.2f}",
+        "currency": stored.get("currency", "GBP"),
+    }
+
+    # Transform positions to holdings
+    holdings = []
+    for p in positions:
+        holdings.append({
+            "symbol": p.get("symbol", ""),
+            "description": p.get("description", ""),
+            "quantity": p.get("quantity", "0"),
+            "price": p.get("price", "0"),
+            "market_value": p.get("market_value", "0"),
+            "currency": p.get("currency", "GBP"),
+            "source_map": p.get("source_map"),
+        })
+
+    # Transform transactions (mostly same structure, just ensure fields exist)
+    txns = []
+    for t in transactions:
+        txn_type = t.get("type", "")
+        # Strip enum prefix if present
+        if isinstance(txn_type, str) and "." in txn_type:
+            txn_type = txn_type.split(".")[-1]
+        txns.append({
+            "date": t.get("date", ""),
+            "type": txn_type,
+            "description": t.get("description", ""),
+            "amount": t.get("amount", "0"),
+            "symbol": t.get("symbol"),
+            "quantity": t.get("quantity"),
+            "price": t.get("price"),
+            "source_map": t.get("source_map"),
+        })
+
+    return {
+        "metadata": metadata,
+        "portfolio_summary": portfolio_summary,
+        "holdings": holdings,
+        "transactions": txns,
+        "integrity_warnings": stored.get("integrity_warnings", []),
+    }
+
+
+@app.post(
+    "/v1/documents/{doc_id}/verify",
+    tags=["Parsing"],
+    summary="Verify and Save Report",
+    description="Submit the verified/corrected JSON report for a document.",
+    responses={
+        200: {"description": "Report saved successfully"},
+        404: {"description": "Document not found"}
+    }
+)
+async def verify_document_report(doc_id: str, report: Dict[str, Any] = Body(...)):
+    """
+    Accept the corrected JSON from the frontend and save it as the verified result.
+    """
+    # Verify document exists first
+    path = storage.get_document_path(doc_id)
+    if not path:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Save the updated report
+    # In a real system, we might move this to a "verified" folder or mark a status flag.
+    # For now, we simply overwrite/update the stored JSON.
+    storage.store_report(doc_id, report)
+
+    logger.info(f"Verified and saved report for {doc_id}")
+    return {"status": "success", "message": "Report verified and saved"}

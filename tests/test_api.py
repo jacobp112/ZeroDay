@@ -115,10 +115,12 @@ class TestParseEndpoint:
         data = response.json()
         assert data["detail"]["error"] == "invalid_content_type"
 
+    @patch("brokerage_parser.api.ReportingEngine")
     @patch("brokerage_parser.api.orchestrator.process_statement")
-    def test_successful_parse_returns_json(self, mock_process):
+    def test_successful_parse_returns_json(self, mock_process, mock_engine_class):
         """Should return serialized report on successful parse."""
         from dataclasses import dataclass
+        from unittest.mock import MagicMock
 
         # Create a minimal mock report
         @dataclass
@@ -170,7 +172,15 @@ class TestParseEndpoint:
             holdings=[],
             source_statement=MockParsedStatement(),
         )
-        mock_process.return_value = mock_report
+
+        # Mock process_statement to return a ParsedStatement
+        mock_statement = MagicMock()
+        mock_process.return_value = mock_statement
+
+        # Mock ReportingEngine.generate_report to return our mock report
+        mock_engine_instance = MagicMock()
+        mock_engine_instance.generate_report.return_value = mock_report
+        mock_engine_class.return_value = mock_engine_instance
 
         # Create a fake PDF (just needs correct content-type)
         fake_pdf = io.BytesIO(b"%PDF-1.4 fake pdf content")

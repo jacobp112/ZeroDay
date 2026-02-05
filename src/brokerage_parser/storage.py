@@ -50,8 +50,28 @@ def store_document(source_path: Path, doc_id: Optional[str] = None) -> str:
     return doc_id
 
 def get_document_path(doc_id: str) -> Optional[Path]:
-    """Retrieve the path to a stored document."""
+    """Get the path to a stored document by its ID."""
     target_path = STORAGE_DIR / f"{doc_id}.pdf"
     if target_path.exists():
         return target_path
+    return None
+
+def store_report(doc_id: str, report_data: dict) -> None:
+    """Store the parsed report JSON associated with a document ID."""
+    import json
+    if not STORAGE_DIR.exists():
+        STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+    report_path = STORAGE_DIR / f"{doc_id}_report.json"
+    with open(report_path, "w") as f:
+        json.dump(report_data, f, indent=2, default=str)
+    logger.info(f"Stored report for {doc_id} at {report_path}")
+
+def get_report(doc_id: str) -> Optional[dict]:
+    """Retrieve the stored report JSON for a document ID."""
+    import json
+    report_path = STORAGE_DIR / f"{doc_id}_report.json"
+    if report_path.exists():
+        with open(report_path, "r") as f:
+            return json.load(f)
     return None

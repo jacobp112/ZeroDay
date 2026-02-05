@@ -1,0 +1,614 @@
+{
+  "broker": "Schwab",
+  "account": {
+    "account_number": "1234-5678",
+    "account_type": "Brokerage",
+    "beginning_balance": null,
+    "ending_balance": null
+  },
+  "statement_date": "2023-01-31",
+  "period_start": "2023-01-01",
+  "period_end": "2023-01-31",
+  "positions": [
+    {
+      "symbol": "AAPL",
+      "description": "Apple Inc",
+      "quantity": "100",
+      "price": "150.00",
+      "market_value": "15000.00",
+      "cost_basis": null,
+      "gain_loss": null,
+      "isin": null,
+      "sedol": null,
+      "currency": "GBP",
+      "gbp_market_value": null,
+      "cost_basis_gbp": null,
+      "unrealised_gain_gbp": null,
+      "source_map": null
+    },
+    {
+      "symbol": "MSFT",
+      "description": "Microsoft Corp",
+      "quantity": "50",
+      "price": "300.00",
+      "market_value": "15000.00",
+      "cost_basis": null,
+      "gain_loss": null,
+      "isin": null,
+      "sedol": null,
+      "currency": "GBP",
+      "gbp_market_value": null,
+      "cost_basis_gbp": null,
+      "unrealised_gain_gbp": null,
+      "source_map": null
+    }
+  ],
+  "transactions": [
+    {
+      "date": "2023-01-01",
+      "type": "TransactionType.BUY",
+      "description": "01/01/23    Buy 10 Shares AAPL @ 150.00                    -1500.00",
+      "amount": "-1500.00",
+      "symbol": "AAPL",
+      "quantity": "10",
+      "price": "150.00",
+      "isin": null,
+      "sedol": null,
+      "currency": "GBP",
+      "fx_rate": null,
+      "gbp_amount": null,
+      "settlement_date": null,
+      "trade_date": null,
+      "transaction_id": null,
+      "source_map": {
+        "date": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 684.0099945068359,
+              "x1": 335.33990478515625,
+              "y1": 697.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "1/01/23 "
+        },
+        "symbol": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 684.0099945068359,
+              "x1": 335.33990478515625,
+              "y1": 697.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "APL "
+        },
+        "quantity": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 684.0099945068359,
+              "x1": 335.33990478515625,
+              "y1": 697.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "0 "
+        },
+        "price": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 684.0099945068359,
+              "x1": 335.33990478515625,
+              "y1": 697.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "50.00 "
+        },
+        "amount": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 684.0099945068359,
+              "x1": 335.33990478515625,
+              "y1": 697.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "1500.00\n"
+        }
+      }
+    },
+    {
+      "date": "2023-01-15",
+      "type": "TransactionType.SELL",
+      "description": "01/15/23    Sell 5 Shares MSFT                             750.00",
+      "amount": "750.00",
+      "symbol": "MSFT",
+      "quantity": "5",
+      "price": null,
+      "isin": null,
+      "sedol": null,
+      "currency": "GBP",
+      "fx_rate": null,
+      "gbp_amount": null,
+      "settlement_date": null,
+      "trade_date": null,
+      "transaction_id": null,
+      "source_map": {
+        "date": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 669.0099945068359,
+              "x1": 300.7099304199219,
+              "y1": 682.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "1/15/23 "
+        },
+        "symbol": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 669.0099945068359,
+              "x1": 300.7099304199219,
+              "y1": 682.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "SFT "
+        },
+        "quantity": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 669.0099945068359,
+              "x1": 300.7099304199219,
+              "y1": 682.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": " "
+        },
+        "amount": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 669.0099945068359,
+              "x1": 300.7099304199219,
+              "y1": 682.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "50.00\n"
+        }
+      }
+    },
+    {
+      "date": "2023-01-20",
+      "type": "TransactionType.DIVIDEND",
+      "description": "01/20/23    Cash Dividend AAPL                             10.50",
+      "amount": "10.50",
+      "symbol": "AAPL",
+      "quantity": null,
+      "price": null,
+      "isin": null,
+      "sedol": null,
+      "currency": "GBP",
+      "fx_rate": null,
+      "gbp_amount": null,
+      "settlement_date": null,
+      "trade_date": null,
+      "transaction_id": null,
+      "source_map": {
+        "date": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 654.0099945068359,
+              "x1": 299.0499267578125,
+              "y1": 667.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "1/20/23 "
+        },
+        "symbol": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 654.0099945068359,
+              "x1": 299.0499267578125,
+              "y1": 667.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "APL "
+        },
+        "amount": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 654.0099945068359,
+              "x1": 299.0499267578125,
+              "y1": 667.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "0.50\n"
+        }
+      }
+    },
+    {
+      "date": "2023-01-25",
+      "type": "TransactionType.BUY",
+      "description": "01/25/23    Reinvestment AAPL 0.07 Shares @ 150.00         -10.50",
+      "amount": "-10.50",
+      "symbol": "AAPL",
+      "quantity": "0.07",
+      "price": "150.00",
+      "isin": null,
+      "sedol": null,
+      "currency": "GBP",
+      "fx_rate": null,
+      "gbp_amount": null,
+      "settlement_date": null,
+      "trade_date": null,
+      "transaction_id": null,
+      "source_map": {
+        "date": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 639.0099945068359,
+              "x1": 345.8799133300781,
+              "y1": 652.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "1/25/23 "
+        },
+        "symbol": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 639.0099945068359,
+              "x1": 345.8799133300781,
+              "y1": 652.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "APL "
+        },
+        "quantity": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 639.0099945068359,
+              "x1": 345.8799133300781,
+              "y1": 652.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": ".07 "
+        },
+        "price": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 639.0099945068359,
+              "x1": 345.8799133300781,
+              "y1": 652.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "50.00 "
+        },
+        "amount": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 639.0099945068359,
+              "x1": 345.8799133300781,
+              "y1": 652.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "10.50\n"
+        }
+      }
+    },
+    {
+      "date": "2023-02-01",
+      "type": "TransactionType.INTEREST",
+      "description": "02/01/23    Bank Interest                                  0.45",
+      "amount": "0.45",
+      "symbol": null,
+      "quantity": null,
+      "price": null,
+      "isin": null,
+      "sedol": null,
+      "currency": "GBP",
+      "fx_rate": null,
+      "gbp_amount": null,
+      "settlement_date": null,
+      "trade_date": null,
+      "transaction_id": null,
+      "source_map": {
+        "date": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 624.0099945068359,
+              "x1": 272.93994140625,
+              "y1": 637.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "2/01/23 "
+        },
+        "amount": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 624.0099945068359,
+              "x1": 272.93994140625,
+              "y1": 637.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": ".45\n"
+        }
+      }
+    },
+    {
+      "date": "2023-02-05",
+      "type": "TransactionType.FEE",
+      "description": "02/05/23    Service Fee                                    -25.00",
+      "amount": "-25.00",
+      "symbol": null,
+      "quantity": null,
+      "price": null,
+      "isin": null,
+      "sedol": null,
+      "currency": "GBP",
+      "fx_rate": null,
+      "gbp_amount": null,
+      "settlement_date": null,
+      "trade_date": null,
+      "transaction_id": null,
+      "source_map": {
+        "date": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 609.0099945068359,
+              "x1": 281.8199157714844,
+              "y1": 622.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "2/05/23 "
+        },
+        "amount": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 609.0099945068359,
+              "x1": 281.8199157714844,
+              "y1": 622.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "25.00\n"
+        }
+      }
+    },
+    {
+      "date": "2023-02-10",
+      "type": "TransactionType.TRANSFER_IN",
+      "description": "02/10/23    Journaled In (Cash)                            5000.00",
+      "amount": "5000.00",
+      "symbol": null,
+      "quantity": null,
+      "price": null,
+      "isin": null,
+      "sedol": null,
+      "currency": "GBP",
+      "fx_rate": null,
+      "gbp_amount": null,
+      "settlement_date": null,
+      "trade_date": null,
+      "transaction_id": null,
+      "source_map": {
+        "date": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 594.0099945068359,
+              "x1": 301.8299255371094,
+              "y1": 607.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "2/10/23 "
+        },
+        "amount": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 594.0099945068359,
+              "x1": 301.8299255371094,
+              "y1": 607.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "000.00\n"
+        }
+      }
+    },
+    {
+      "date": "2023-02-15",
+      "type": "TransactionType.TRANSFER_OUT",
+      "description": "02/15/23    Wire Transfer Out                              -1000.00",
+      "amount": "-1000.00",
+      "symbol": null,
+      "quantity": null,
+      "price": null,
+      "isin": null,
+      "sedol": null,
+      "currency": "GBP",
+      "fx_rate": null,
+      "gbp_amount": null,
+      "settlement_date": null,
+      "trade_date": null,
+      "transaction_id": null,
+      "source_map": {
+        "date": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 579.010009765625,
+              "x1": 302.3699035644531,
+              "y1": 592.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "2/15/23 "
+        },
+        "amount": {
+          "bboxes": [
+            {
+              "page": 1,
+              "x0": 50.0,
+              "y0": 579.010009765625,
+              "x1": 302.3699035644531,
+              "y1": 592.75
+            }
+          ],
+          "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+          "confidence": 1.0,
+          "raw_text": "1000.00\n"
+        }
+      }
+    }
+  ],
+  "integrity_warnings": [],
+  "parse_errors": [],
+  "tax_wrapper": "TaxWrapper.UNKNOWN",
+  "currency": "GBP",
+  "custodian": null,
+  "corporate_actions": [],
+  "source_map": {
+    "account_number": {
+      "bboxes": [
+        {
+          "page": 1,
+          "x0": 50.0,
+          "y0": 729.0100021362305,
+          "x1": 177.8399658203125,
+          "y1": 742.75
+        }
+      ],
+      "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+      "confidence": 1.0,
+      "raw_text": "1234-5678"
+    },
+    "statement_date": {
+      "bboxes": [
+        {
+          "page": 1,
+          "x0": 50.0,
+          "y0": 759.0100021362305,
+          "x1": 202.30995178222656,
+          "y1": 772.75
+        }
+      ],
+      "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+      "confidence": 1.0,
+      "raw_text": "January 31, 2023"
+    },
+    "period_start": {
+      "bboxes": [
+        {
+          "page": 1,
+          "x0": 50.0,
+          "y0": 744.0100021362305,
+          "x1": 295.699951171875,
+          "y1": 757.75
+        }
+      ],
+      "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+      "confidence": 1.0,
+      "raw_text": "January 1, 2023"
+    },
+    "period_end": {
+      "bboxes": [
+        {
+          "page": 1,
+          "x0": 50.0,
+          "y0": 744.0100021362305,
+          "x1": 295.699951171875,
+          "y1": 757.75
+        }
+      ],
+      "extraction_method": "ExtractionMethod.NATIVE_TEXT",
+      "confidence": 1.0,
+      "raw_text": "January 31, 2023"
+    }
+  }
+}

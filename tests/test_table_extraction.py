@@ -20,18 +20,35 @@ def test_extract_tables_success(mock_pdf_path, mock_fitz):
     mock_page = MagicMock()
     mock_table = MagicMock()
 
-    # Setup table data structure
-    table_data = [["Date", "Description", "Amount"], ["01/01/2023", "Test", "100.00"]]
-    mock_table.extract.return_value = table_data
+    # Setup table data structure - mimicking PyMuPDF table structure
+    # Need to mock header and rows like the real PyMuPDF returns
+    mock_header = MagicMock()
+    mock_header.names = ["Date", "Description", "Amount"]
+    mock_header.cells = [MagicMock(x0=0, y0=0, x1=100, y1=20) for _ in range(3)]
+
+    mock_row = MagicMock()
+    mock_row.__iter__ = lambda self: iter(["01/01/2023", "Test", "100.00"])
+    mock_row.cells = [MagicMock(x0=0, y0=20, x1=100, y1=40) for _ in range(3)]
+
+    mock_table.header = mock_header
+    mock_table.rows = [mock_row]
 
     mock_page.find_tables.return_value = [mock_table]
+    mock_page.rect = MagicMock()
+    mock_page.rect.height = 792  # Standard page height
     mock_doc.__iter__.return_value = [mock_page]
     mock_fitz.open.return_value = mock_doc
 
     result = extract_tables(mock_pdf_path)
 
     assert 1 in result
-    assert result[1] == [table_data]
+    # Result is now a list of RichTable objects
+    assert len(result[1]) == 1
+    rich_table = result[1][0]
+    # Check to_plain() returns expected structure
+    plain_table = rich_table.to_plain()
+    assert plain_table[0] == ["Date", "Description", "Amount"]
+    assert plain_table[1] == ["01/01/2023", "Test", "100.00"]
     mock_fitz.open.assert_called_once_with(mock_pdf_path)
 
 def test_extract_tables_no_tables(mock_pdf_path, mock_fitz):

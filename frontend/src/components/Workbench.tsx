@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { uploadStatement, getDocumentUrl } from '../lib/api';
+import { useState, useCallback, useEffect } from 'react';
+import { uploadStatement, getDocumentUrl, getDocumentReport } from '../lib/api';
 import type { ParseResponse, SourceReference, BoundingBox } from '../lib/types';
 import { PDFViewer } from './PDFViewer';
 import { ExtractionPanel } from './ExtractionPanel';
@@ -8,6 +8,7 @@ import { Upload, AlertCircle } from 'lucide-react';
 export function Workbench() {
     const [data, setData] = useState<ParseResponse | null>(null);
     const [docUrl, setDocUrl] = useState<string | null>(null);
+    const [docId, setDocId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -15,37 +16,30 @@ export function Workbench() {
     const [highlightBox, setHighlightBox] = useState<BoundingBox | null>(null);
     const [activePage, setActivePage] = useState<number>(1);
 
-    // Autoload handling
-    useState(() => {
+    // Autoload handling - Load from persisted report if doc_id is present
+    useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const urlDocId = params.get('doc_id');
         if (urlDocId) {
+            setDocId(urlDocId);
             setLoading(true);
-            // Fetch document content
-            fetch(`http://localhost:8000/v1/documents/${urlDocId}/content`)
-                .then(res => {
-                    if (!res.ok) throw new Error("Document not found");
-                    return res.blob();
-                })
-                .then(async blob => {
-                    // 1. Show the PDF
-                    setDocUrl(URL.createObjectURL(blob));
 
-                    // 2. Auto-Parse the content
-                    // We allow the user to see the extraction immediately
-                    try {
-                        const file = new File([blob], "autoloaded_statement.pdf", { type: "application/pdf" });
-                        const response = await uploadStatement(file);
-                        setData(response);
-                    } catch (parseErr) {
-                        console.error("Auto-parse failed", parseErr);
-                        setError("Document loaded, but auto-extraction failed.");
-                    }
+            // Fetch report (NOT re-parsing)
+            Promise.all([
+                getDocumentReport(urlDocId),
+                fetch(`http://localhost:8000/v1/documents/${urlDocId}/content`).then(r => r.ok ? r.blob() : Promise.reject('PDF not found'))
+            ])
+                .then(([report, blob]) => {
+                    setData(report);
+                    setDocUrl(URL.createObjectURL(blob));
                 })
-                .catch(err => setError("Failed to autoload document: " + err.message))
+                .catch(err => {
+                    console.error("Autoload failed", err);
+                    setError(String(err.message || err));
+                })
                 .finally(() => setLoading(false));
         }
-    });
+    }, []);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -134,7 +128,11 @@ export function Workbench() {
                 <div className="w-1/2 h-full bg-white relative">
                     <ExtractionPanel
                         data={data}
+                        setData={setData}
+                        docId={docId}
                         onSelectField={handleSelectField}
+                        onSaveSuccess={() => setError(null)}
+                        onSaveError={(msg) => setError(msg)}
                     />
                 </div>
             </div>

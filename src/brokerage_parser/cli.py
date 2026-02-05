@@ -28,6 +28,7 @@ from rich import box
 # --- MOCK / REAL IMPORT TOGGLE ---
 from brokerage_parser import orchestrator
 from brokerage_parser import export
+from brokerage_parser import storage
 
 # --- THEME CONFIGURATION ---
 # Professional enterprise color scheme - muted, sophisticated
@@ -425,8 +426,59 @@ def process_batch_gui(pdf_files: List[Path], args, include_sources, output_forma
 
     # End of Live Context
     # End of Live Context
+    # End of Live Context
     show_final_report(results_data)
+
+    # Prompt to launch frontend if we have results
+    if results_data and getattr(args, 'ui', False):
+         # Just use the last one for now or prompt user?
+         # The args.ui flag might just mean "start frontend after batch"
+         pass
+
     return results_data
+
+def custom_serializer(obj):
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, Decimal):
+        return str(obj)
+    if isinstance(obj, Enum):
+        return obj.value
+    raise TypeError(f"Type {type(obj)} not serializable")
+
+def prepare_and_store_report(statement, pdf_path):
+    """Store PDF and Report to persistent storage context."""
+    from dataclasses import asdict, is_dataclass
+
+    # 1. Store PDF
+    doc_id = storage.store_document(Path(pdf_path))
+
+    # 2. Serialize Report
+    if is_dataclass(statement):
+        report_dict = asdict(statement)
+    elif hasattr(statement, "to_dict"):
+        report_dict = statement.to_dict()
+    else:
+        report_dict = statement # Assume dict
+
+    # Inject doc_id into metadata
+    if "metadata" in report_dict:
+        report_dict["metadata"]["document_id"] = doc_id
+
+    # 3. Store Report using custom logic to handle Decimals/Dates
+    # We use json.loads(json.dumps(...)) to ensure it's pure JSON standard types for storage
+    # or just pass rely on storage.store_report to handle it?
+    # storage.store_report uses json.dump w/ default=str.
+    # But it's safer to ensure we match API structure.
+    storage.store_report(doc_id, report_dict)
+
+    return doc_id
+
+def client_report_to_dict(report):
+    from dataclasses import asdict, is_dataclass
+    if is_dataclass(report):
+        return asdict(report)
+    return report
 
 def run_demo_mode():
     """Run a comprehensive demonstration with simulated data."""
@@ -473,32 +525,32 @@ def run_demo_mode():
     has_issues = any(r['status'] != 'success' for r in results)
 
     if has_issues:
-        from rich.prompt import Confirm
-        import shutil
-        from brokerage_parser import storage
-
         console.print("\n[bold yellow]Attention Needed:[/]")
         console.print("Visual verification required for flagged statements.")
 
-        # Seed a real "partial" file for the demo
-        # detailed logic: we check if there is a 'partial_read_warning.pdf' in the file list
-        # if so, we copy a sample file to act as it, store it, and get an ID
+    # Seed a REAL sample file for the frontend demo
+    # (Mock mode used fake paths, so we seed a real one here)
+    from rich.prompt import Confirm
+    sample_source = Path("samples/schwab_sample.pdf")
+    demo_url = "http://localhost:5173"
+    seeded_doc_id = None
 
-        sample_source = Path("samples/schwab_sample.pdf")
-        demo_url = "http://localhost:5173"
+    if sample_source.exists():
+        try:
+            # Store the actual PDF
+            seeded_doc_id = storage.store_document(sample_source)
 
-        if sample_source.exists():
-            # "Simulate" the corrupted file by just using a good one but calling it corrupted
-            # In a real demo this might be a specific bad file
-            try:
-                doc_id = storage.store_document(sample_source)
-                demo_url = f"http://localhost:5173/?doc_id={doc_id}"
-                console.print(f"Document seeded to storage (ID: {doc_id[:8]}...)")
-            except Exception as e:
-                console.print(f"[dim]Could not seed storage: {e}[/]")
+            # Parse and store report for this PDF
+            statement = orchestrator.process_statement(str(sample_source), include_sources=True)
+            prepare_and_store_report(statement, str(sample_source))
 
-        if Confirm.ask("Launch Reconciliation Workbench (Frontend) to verify?"):
-            start_frontend(url=demo_url)
+            demo_url = f"http://localhost:5173/?doc_id={seeded_doc_id}"
+            console.print(f"[green]✓[/] Seeded sample document (ID: {seeded_doc_id[:8]}...)")
+        except Exception as e:
+            console.print(f"[dim]Could not seed sample: {e}[/]")
+
+    if Confirm.ask("Launch Reconciliation Workbench (Frontend) to verify?"):
+        start_frontend(url=demo_url)
 
     console.print("[dim]Press Enter to return to menu...[/]")
     input()
