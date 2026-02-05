@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 import logging
-from brokerage_parser.extraction import extract_text
+from brokerage_parser.extraction import extract_text, extract_tables
 from brokerage_parser.detection import detect_broker
 from brokerage_parser.parsers import get_parser
 from brokerage_parser.models import ParsedStatement
@@ -35,20 +35,21 @@ def process_statement(pdf_path: str) -> ParsedStatement:
 
     # 1. Extraction
     try:
+        # Try table extraction first (graceful degradation)
+        extracted_tables_map = extract_tables(path)
+
+        # Flatten tables for the parser: List of all tables across all pages
+        # extracted_tables_map is Dict[int, List[List[List[str]]]]
+        all_tables = []
+        for page_num in sorted(extracted_tables_map.keys()):
+            all_tables.extend(extracted_tables_map[page_num])
+
+        # Text extraction (still needed for detection and fallback)
         pages_text = extract_text(path)
-        # Combine first few pages for detection, or all for parsing
-        # For simple parsing of single statement, combining all is fine for now
-        # But detection usually only needs page 1
         full_text = "\n".join(pages_text.values())
 
-        # We might want to pass page text map to parser later, but for now parser logic is string based
     except Exception as e:
         logger.error(f"Extraction failed: {e}")
-        # Return a "failed" statement object or raise?
-        # Requirement said "populate parse_errors list".
-        # But we can't create ParsedStatement without broker/account info.
-        # So we might define a fallback or re-raise.
-        # Let's re-raise for severe extraction errors, assuming CLI handles it.
         raise e
 
     # 2. Detection
@@ -57,13 +58,13 @@ def process_statement(pdf_path: str) -> ParsedStatement:
 
     if broker_name == "unknown":
         logger.warning("Unknown broker. Parsing cannot proceed.")
-        # Minimal empty statement
         stmt = ParsedStatement(broker="Unknown")
         stmt.parse_errors.append("Could not detect broker.")
         return stmt
 
     # 3. Get Parser
-    parser = get_parser(broker_name, full_text)
+    # Pass the flattened list of tables
+    parser = get_parser(broker_name, full_text, tables=all_tables)
     if not parser:
         logger.error(f"No parser implementation found for: {broker_name}")
         stmt = ParsedStatement(broker=broker_name)

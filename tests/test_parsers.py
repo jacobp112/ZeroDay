@@ -6,6 +6,8 @@ from brokerage_parser.models import TransactionType
 # Mock Text Data
 SCHWAB_TEXT = """
 Charles Schwab & Co., Inc.
+Statement Date: January 31, 2023
+Statement Period: January 1, 2023 to January 31, 2023
 Account Number: 1234-5678
 
 Transaction Detail
@@ -26,6 +28,8 @@ Total
 
 FIDELITY_TEXT = """
 Fidelity Investments
+Statement Date: 01/31/2023
+Account Activity for 01/01/2023 - 01/31/2023
 Account Number X12-345678
 
 Activity
@@ -42,6 +46,8 @@ Total
 
 VANGUARD_TEXT = """
 The Vanguard Group
+Statement date: January 31, 2023
+For the period January 1, 2023, to January 31, 2023
 Account Number 9876-54321
 
 Activity Detail
@@ -247,3 +253,96 @@ def test_schwab_parser_full():
     assert pos1.quantity == Decimal("100")
     assert pos1.price == Decimal("150.00")
     assert pos1.market_value == Decimal("15000.00")
+
+def test_schwab_statement_dates():
+    parser = get_parser("schwab", SCHWAB_TEXT)
+    dates = parser._parse_statement_dates()
+    assert dates is not None
+    stmt_date, start, end = dates
+
+    assert stmt_date.year == 2023
+    assert stmt_date.month == 1
+    assert stmt_date.day == 31
+
+    assert start.day == 1
+    assert end.day == 31
+
+def test_fidelity_statement_dates():
+    parser = get_parser("fidelity", FIDELITY_TEXT)
+    dates = parser._parse_statement_dates()
+    assert dates is not None
+    stmt_date, start, end = dates
+
+    assert stmt_date.year == 2023
+    assert stmt_date.month == 1
+    assert stmt_date.day == 31
+
+    assert start.day == 1
+    assert end.day == 31
+
+def test_vanguard_statement_dates():
+    parser = get_parser("vanguard", VANGUARD_TEXT)
+    dates = parser._parse_statement_dates()
+    assert dates is not None
+    stmt_date, start, end = dates
+
+    assert stmt_date.year == 2023
+    assert stmt_date.month == 1
+    assert stmt_date.day == 31
+
+    assert start.day == 1
+    assert end.day == 31
+
+def test_statement_dates_none():
+    # Test text with no dates
+    text = """
+    Some Broker
+    Account Number: 123
+    No dates here
+    """
+    # Schwab
+    parser = get_parser("schwab", text)
+    assert parser._parse_statement_dates() is None
+
+    # Fidelity
+    parser = get_parser("fidelity", text)
+    assert parser._parse_statement_dates() is None
+
+    # Vanguard
+    parser = get_parser("vanguard", text)
+    assert parser._parse_statement_dates() is None
+
+def test_schwab_single_year_range():
+    text = """
+    Charles Schwab
+    Statement Date: January 31, 2023
+    Statement Period: January 1 - 31, 2023
+    Account Number: 123
+    """
+    parser = get_parser("schwab", text)
+    dates = parser._parse_statement_dates()
+    assert dates is not None
+    stmt_date, start, end = dates
+
+    assert start.month == 1
+    assert start.day == 1
+    assert start.year == 2023
+
+    assert end.month == 1 # inferred month
+    assert end.day == 31
+    assert end.year == 2023
+
+def test_range_fallback_logic():
+    # Only Period found, no statement date
+    text = """
+    Charles Schwab
+    Statement Period: January 1, 2023 to January 31, 2023
+    """
+    parser = get_parser("schwab", text)
+    dates = parser._parse_statement_dates()
+    assert dates is not None
+    stmt_date, start, end = dates
+
+    # Logic: use period_end as statement_date
+    assert stmt_date == end
+    assert stmt_date.day == 31

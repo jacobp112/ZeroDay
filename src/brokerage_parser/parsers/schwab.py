@@ -15,8 +15,57 @@ class SchwabParser(Parser):
         return match.group(1) if match else None
 
     def _parse_statement_dates(self) -> Optional[tuple[date, date, date]]:
-        # Example: "Statement Period: January 1, 2023 to January 31, 2023"
-        # This is a placeholder standard pattern
+        stmt_date = None
+        period_start = None
+        period_end = None
+
+        # 1. Search for Statement Date
+        # "Statement Date: January 31, 2023" or "As of January 31, 2023"
+        stmt_match = self._find_pattern(r"(?:Statement Date:|As of)\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})")
+        if stmt_match:
+            stmt_date = self._parse_date_flexible(stmt_match.group(1))
+
+        # 2. Search for Period
+        # "Statement Period: January 1, 2023 to January 31, 2023"
+        # "For the period January 1 - January 31, 2023"
+
+        # Try full start/end pattern first
+        period_match = self._find_pattern(r"(?:Statement Period:|For the period)\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})\s*(?:to|-)\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})")
+        if period_match:
+            period_start = self._parse_date_flexible(period_match.group(1))
+            period_end = self._parse_date_flexible(period_match.group(2))
+        else:
+            # Try single year range: "January 1 - 31, 2023" or "January 1 - January 31, 2023" (if year at end)
+            # This regex captures: Month DD (group 1) ... DD (group 2) ... YYYY (group 3)
+            # Be careful not to match too aggressively.
+            # "For the period January 1 - 31, 2023"
+            range_match = self._find_pattern(r"(?:Statement Period:|For the period)\s*([A-Za-z]+\s+\d{1,2})\s*-\s*(\d{1,2}|[A-Za-z]+\s+\d{1,2}),?\s+(\d{4})")
+            if range_match:
+                start_part = range_match.group(1) # "January 1"
+                end_part = range_match.group(2)   # "31" or "January 31"
+                year = range_match.group(3)       # "2023"
+
+                # reconstruct dates
+                period_start = self._parse_date_flexible(f"{start_part} {year}")
+
+                if re.match(r"^\d+$", end_part):
+                     # just DD, need month from start
+                     month = start_part.split()[0]
+                     period_end = self._parse_date_flexible(f"{month} {end_part} {year}")
+                else:
+                    # Includes month
+                    period_end = self._parse_date_flexible(f"{end_part} {year}")
+
+        # Fallback Logic
+        if stmt_date and not period_start:
+            return (stmt_date, stmt_date, stmt_date)
+
+        if period_end and not stmt_date:
+            stmt_date = period_end
+
+        if stmt_date and period_start and period_end:
+            return (stmt_date, period_start, period_end)
+
         return None
 
     def _parse_positions(self) -> List[Position]:
@@ -63,7 +112,134 @@ class SchwabParser(Parser):
                     continue
         return positions
 
+    def _parse_transactions_from_tables(self) -> List[Transaction]:
+        transactions = []
+        tx_tables = self._get_tables_by_type("transactions")
+
+        for table in tx_tables:
+            # Assume header is row 0 or 1
+            start_row = 1
+            # Check for header row to map columns
+            header_row = [str(c).lower() for c in table[0]]
+
+            # Simple Column Mapping
+            col_map = {
+                "date": -1,
+                "action": -1,
+                "symbol": -1,
+                "description": -1,
+                "quantity": -1,
+                "price": -1,
+                "amount": -1
+            }
+
+            for idx, col_text in enumerate(header_row):
+                if "date" in col_text: col_map["date"] = idx
+                elif "action" in col_text: col_map["action"] = idx
+                elif "symbol" in col_text: col_map["symbol"] = idx
+                elif "description" in col_text: col_map["description"] = idx
+                elif "quantity" in col_text or "shares" in col_text: col_map["quantity"] = idx
+                elif "price" in col_text: col_map["price"] = idx
+                elif "amount" in col_text or "total" in col_text: col_map["amount"] = idx
+
+            # If map is empty or poor, try next row
+            if col_map["date"] == -1 and len(table) > 1:
+                header_row = [str(c).lower() for c in table[1]]
+                for idx, col_text in enumerate(header_row):
+                   if "date" in col_text: col_map["date"] = idx
+                   elif "action" in col_text: col_map["action"] = idx
+                   elif "symbol" in col_text: col_map["symbol"] = idx
+                   elif "description" in col_text: col_map["description"] = idx
+                   elif "quantity" in col_text or "shares" in col_text: col_map["quantity"] = idx
+                   elif "price" in col_text: col_map["price"] = idx
+                   elif "amount" in col_text or "total" in col_text: col_map["amount"] = idx
+                start_row = 2
+
+            # Fallback indices if still not found
+            if col_map["date"] == -1:
+                col_map["date"] = 0
+                col_map["action"] = 1
+                col_map["symbol"] = 2
+                col_map["description"] = 3
+                col_map["amount"] = -1 # look at last column
+
+            for i in range(start_row, len(table)):
+                row = table[i]
+                if not row or len(row) < 3: continue
+
+                # Date
+                date_val = None
+                date_str = str(row[col_map["date"]]).strip() if col_map["date"] < len(row) else ""
+
+                # Try standard formats
+                date_val = self._parse_date(date_str, "%m/%d/%Y")
+                if not date_val:
+                     date_val = self._parse_date(date_str, "%m/%d/%y")
+
+                if not date_val:
+                    continue # Not a valid transaction row (maybe subheader or footer)
+
+                # Amount
+                amount_idx = col_map["amount"]
+                if amount_idx == -1:
+                    amount_idx = len(row) - 1 # assume last
+
+                amount_str = str(row[amount_idx]).strip() if amount_idx < len(row) else ""
+                amount = self._parse_decimal(amount_str) or Decimal("0.0")
+
+                # Action / Type
+                action_idx = col_map["action"]
+                action_str = str(row[action_idx]).upper() if action_idx != -1 and action_idx < len(row) else ""
+
+                # Combine description if needed
+                desc_idx = col_map["description"]
+                desc_str = str(row[desc_idx]) if desc_idx != -1 and desc_idx < len(row) else ""
+
+                full_desc = f"{action_str} {desc_str}".strip()
+
+                # Determine Type
+                tx_type = self._determine_transaction_type(full_desc, amount)
+                if not tx_type:
+                     continue
+
+                # Symbol
+                symbol = "UNKNOWN"
+                sym_idx = col_map["symbol"]
+                if sym_idx != -1 and sym_idx < len(row):
+                     symbol = str(row[sym_idx]).strip().upper()
+
+                if not symbol or symbol == "UNKNOWN":
+                     # heuristics on description
+                     pass # keep existing symbol logic if needed or accept UNKNOWN
+
+                transactions.append(Transaction(
+                    date=date_val,
+                    type=tx_type,
+                    description=full_desc,
+                    amount=amount,
+                    symbol=symbol
+                ))
+
+        return transactions
+
+    def _determine_transaction_type(self, text: str, amount: Decimal) -> Optional[TransactionType]:
+        text = text.upper()
+        if "BUY" in text: return TransactionType.BUY
+        if "SELL" in text: return TransactionType.SELL
+        if "DIVIDEND" in text: return TransactionType.DIVIDEND
+        if "INTEREST" in text: return TransactionType.INTEREST
+        if "FEE" in text: return TransactionType.FEE
+        if "TRANSFER" in text or "JOURNAL" in text or "WIRE" in text:
+            return TransactionType.TRANSFER_OUT if amount < 0 else TransactionType.TRANSFER_IN
+        return None # or TransactionType.BUY as default? Safer to return None if unclear
+
     def _parse_transactions(self) -> List[Transaction]:
+        # 1. Try Table Extraction
+        table_txs = self._parse_transactions_from_tables()
+        if table_txs:
+             return table_txs
+
+        # 2. Fallback to Regex (Original Logic)
         transactions = []
         headers = ["Transaction Detail", "Investment Detail", "Account Activity"]
         lines = []
