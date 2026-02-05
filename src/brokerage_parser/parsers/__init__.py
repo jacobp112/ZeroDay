@@ -8,31 +8,30 @@ from brokerage_parser.extraction import TableData
 
 __all__ = ["get_parser", "get_supported_brokers"]
 
-def get_parser(broker_name: str, text: str, tables: Optional[List[TableData]] = None) -> Optional[Parser]:
+from typing import Optional, Type
+from brokerage_parser.parsers.base import Parser
+
+def get_parser(broker_name: str) -> Optional[Type[Parser]]:
     """
-    Factory function to return the correct parser instance.
+    Factory function to return the correct parser class.
 
     Args:
         broker_name: Normalized broker name (schwab, fidelity, vanguard).
-        text: The full text of the statement.
-        tables: Optional list of extracted tables.
 
     Returns:
-        Instance of a Parser subclass or None if not supported.
+        The Parser class (not instance) or None.
     """
     broker = broker_name.lower().strip()
-    tables = tables or []
 
     if broker == "schwab":
-        return SchwabParser(text, tables)
+        return SchwabParser
     elif broker == "fidelity":
-        return FidelityParser(text, tables)
+        return FidelityParser
     elif broker == "vanguard":
-        return VanguardParser(text, tables)
-
-    # NEW: If unknown broker but tables exist, try generic
-    if broker == "unknown" and tables:
-        return GenericParser(text, tables)
+        return VanguardParser
+    elif broker == "unknown":
+         # Use GenericParser as fallback for unknown brokers to attempt table extraction
+         return GenericParser
 
     return None
 

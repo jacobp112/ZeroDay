@@ -2,35 +2,119 @@ from abc import ABC, abstractmethod
 from decimal import Decimal
 from datetime import date, datetime
 import re
-from typing import List, Optional, Pattern
-from brokerage_parser.models import ParsedStatement, Transaction, Position, AccountSummary
+from typing import List, Optional, Pattern, Dict, Tuple, Any, Union
+import logging
+from brokerage_parser.models import ParsedStatement, Transaction, Position, AccountSummary, SourceReference, ExtractionMethod, BoundingBox
+from brokerage_parser.extraction import TableData, RichPage, RichTable
 
-from brokerage_parser.extraction import TableData
+logger = logging.getLogger(__name__)
+
+# Type alias for legacy tables
+TableData = List[List[str]]
 
 class Parser(ABC):
-    def __init__(self, text: str, tables: Optional[List[TableData]] = None):
+    def __init__(self, text: str, tables: Optional[List[TableData]] = None, rich_text_map: Optional[Dict[int, RichPage]] = None, rich_tables: Optional[List[RichTable]] = None):
         self.text = text
-        self.lines = text.split('\n')
-        # tables is List[TableData], where TableData is List[List[List[str]]] (List of Tables on a page)
-        # So tables passed here is a list of page-level table sets?
-        # Or should we flatten it?
-        # The extraction returns Dict[int, TableData].
-        # Orchestrator will likely pass values() or a flat list.
-        # Let's verify what orchestrator will pass.
-        # Orchestrator calls process_statement, which calls extraction.
-        # Let's assume orchestrator passes a flattened list of tables or the raw dict.
-        # The user said: "tables: Optional[List[List[List[str]]]]" (which matches TableData alias) in one place
-        # But TableData alias I defined is List of Tables.
-        # So "tables" arg here should probably be the full collection.
-        # Let's align with the user request: "tables: Optional[List[List[List[str]]]] = None"
-        # Wait, the user's alias TableData = List[List[List[str]]] represents ONE page's tables.
-        # So passing a List[TableData] would be List[List[List[List[str]]]].
-        # Let's simplify. We just want a flat list of ALL tables found in the document, regardless of page?
-        # Or preserved by page? Preserving by page is better for context but flat is easier for "find the transaction table".
-        # User said: "tables: Optional[List[List[List[str]]]] = None" in the user request.
-        # That implies a flat list of tables. Each item is a Table (List[List[str]]).
-        # So let's flatten in orchestrator.
         self.tables = tables or []
+        self.rich_text_map = rich_text_map or {}
+        self.rich_tables = rich_tables or []
+
+        # Let's build a global offset map if rich_text is provided.
+        self.global_offset_map = [] # List[(start, end, page_num, local_start)]
+        self._build_offset_map()
+
+    def _build_offset_map(self):
+        """Builds a mapping from global text offsets to specific pages and local offsets."""
+        current_offset = 0
+        if not self.rich_text_map:
+            return
+
+        sorted_pages = sorted(self.rich_text_map.keys())
+        for page_num in sorted_pages:
+            rich_page = self.rich_text_map[page_num]
+            page_len = len(rich_page.full_text)
+
+            # Record the range for this page in the global text
+            # Assuming self.text is exactly "\n".join(pages)
+            # We must verify if self.text matches exactly or if we need to reconstruct it?
+            # Orchestrator usually does text = "\n".join(extract_text(...).values())
+            # so it should align, plus the joining newlines.
+
+            self.global_offset_map.append({
+                "global_start": current_offset,
+                "global_end": current_offset + page_len,
+                "page_num": page_num,
+                "local_start": 0 # offset within the page
+            })
+
+            current_offset += page_len + 1 # +1 for the newline used in join
+
+    def _get_source_for_range(self, start_idx: int, end_idx: int) -> Optional[SourceReference]:
+        """
+        Finds the source reference for a global text range.
+        Handles ranges that might span pages (unlikely for single field, but possible).
+        """
+        if not self.rich_text_map:
+            return None
+
+        # Find which page(s) this range covers
+        # Most fields are within a single page.
+
+        sources = []
+        raw_texts = []
+
+        for mapping in self.global_offset_map:
+            # Check overlap
+            # Range: [start_idx, end_idx)
+            # Map:   [g_start, g_end)
+
+            overlap_start = max(start_idx, mapping["global_start"])
+            overlap_end = min(end_idx, mapping["global_end"])
+
+            if overlap_start < overlap_end:
+                # We have overlap on this page
+                page_num = mapping["page_num"]
+                # Convert global to local
+                local_start = overlap_start - mapping["global_start"]
+                local_end = overlap_end - mapping["global_start"]
+
+                rich_page = self.rich_text_map.get(page_num)
+                if rich_page:
+                    ref = rich_page.get_source_for_span(local_start, local_end)
+                    if ref:
+                        sources.append(ref)
+                        if ref.raw_text:
+                            raw_texts.append(ref.raw_text)
+
+        if not sources:
+            return None
+
+        if len(sources) == 1:
+            return sources[0]
+
+        # Merge multi-page sources (rare)
+        all_bboxes = []
+        for s in sources:
+            all_bboxes.extend(s.bboxes)
+
+        return SourceReference(
+            bboxes=all_bboxes,
+            extraction_method=sources[0].extraction_method, # Assuming same method
+            confidence=min(s.confidence for s in sources),
+            raw_text="".join(raw_texts)
+        )
+
+    def _track_field(self, value_obj: Any, match: Optional[re.Match], match_group: int = 0) -> Tuple[Any, Optional[SourceReference]]:
+        """
+        Helper to extract source for a regex match and return (value, source_ref).
+        If value is just the text, we return it. If it's converted (Decimal), passed as value_obj.
+        """
+        if not match or not self.rich_text_map:
+            return value_obj, None
+
+        start, end = match.span(match_group)
+        source = self._get_source_for_range(start, end)
+        return value_obj, source
 
     def _identify_table_type(self, table: List[List[str]]) -> str:
         """
@@ -170,3 +254,4 @@ class Parser(ABC):
 
         section_text = remaining_text[:end_idx]
         return [line.strip() for line in section_text.split('\n') if line.strip()]
+

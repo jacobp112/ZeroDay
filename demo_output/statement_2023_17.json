@@ -1,0 +1,248 @@
+{
+  "broker": "E*TRADE",
+  "account": "****8535",
+  "txns": [
+    {
+      "date": "2023-01-19",
+      "amount": 1787.71,
+      "type": "SELL",
+      "symbol": "GOOGL"
+    },
+    {
+      "date": "2023-07-05",
+      "amount": 2083.56,
+      "type": "SELL",
+      "symbol": "MSFT"
+    },
+    {
+      "date": "2023-05-27",
+      "amount": 4244.45,
+      "type": "DIVIDEND",
+      "symbol": "AAPL"
+    },
+    {
+      "date": "2023-05-05",
+      "amount": 3908.23,
+      "type": "DIVIDEND",
+      "symbol": "VOO"
+    },
+    {
+      "date": "2023-06-15",
+      "amount": 4024.95,
+      "type": "BUY",
+      "symbol": "GOOGL"
+    },
+    {
+      "date": "2023-05-09",
+      "amount": 2981.86,
+      "type": "DIVIDEND",
+      "symbol": "VTI"
+    },
+    {
+      "date": "2023-09-13",
+      "amount": 1731.64,
+      "type": "BUY",
+      "symbol": "TSLA"
+    },
+    {
+      "date": "2023-08-16",
+      "amount": 3173.73,
+      "type": "SELL",
+      "symbol": "TSLA"
+    },
+    {
+      "date": "2023-03-18",
+      "amount": 823.86,
+      "type": "DIVIDEND",
+      "symbol": "GOOGL"
+    },
+    {
+      "date": "2023-01-13",
+      "amount": 504.12,
+      "type": "DIVIDEND",
+      "symbol": "MSFT"
+    },
+    {
+      "date": "2023-09-06",
+      "amount": 516.33,
+      "type": "SELL",
+      "symbol": "GOOGL"
+    },
+    {
+      "date": "2023-11-25",
+      "amount": 2566.57,
+      "type": "SELL",
+      "symbol": "TSLA"
+    },
+    {
+      "date": "2023-09-14",
+      "amount": 1016.05,
+      "type": "SELL",
+      "symbol": "VTI"
+    },
+    {
+      "date": "2023-10-23",
+      "amount": 344.79,
+      "type": "SELL",
+      "symbol": "MSFT"
+    },
+    {
+      "date": "2023-04-19",
+      "amount": 3590.22,
+      "type": "DIVIDEND",
+      "symbol": "TSLA"
+    },
+    {
+      "date": "2023-11-28",
+      "amount": 1614.23,
+      "type": "BUY",
+      "symbol": "VTI"
+    },
+    {
+      "date": "2023-04-15",
+      "amount": 4874.35,
+      "type": "SELL",
+      "symbol": "GOOGL"
+    },
+    {
+      "date": "2023-11-04",
+      "amount": 2794.39,
+      "type": "DIVIDEND",
+      "symbol": "VTI"
+    },
+    {
+      "date": "2023-09-23",
+      "amount": 2850.82,
+      "type": "SELL",
+      "symbol": "GOOGL"
+    },
+    {
+      "date": "2023-04-21",
+      "amount": 1801.94,
+      "type": "DIVIDEND",
+      "symbol": "TSLA"
+    },
+    {
+      "date": "2023-07-15",
+      "amount": 4558.37,
+      "type": "SELL",
+      "symbol": "AAPL"
+    },
+    {
+      "date": "2023-03-24",
+      "amount": 435.5,
+      "type": "SELL",
+      "symbol": "GOOGL"
+    },
+    {
+      "date": "2023-11-15",
+      "amount": 2024.0,
+      "type": "BUY",
+      "symbol": "AAPL"
+    },
+    {
+      "date": "2023-11-26",
+      "amount": 3899.73,
+      "type": "SELL",
+      "symbol": "AAPL"
+    },
+    {
+      "date": "2023-07-04",
+      "amount": 4746.84,
+      "type": "BUY",
+      "symbol": "MSFT"
+    },
+    {
+      "date": "2023-11-16",
+      "amount": 3419.6,
+      "type": "BUY",
+      "symbol": "VOO"
+    },
+    {
+      "date": "2023-07-25",
+      "amount": 1881.45,
+      "type": "BUY",
+      "symbol": "VTI"
+    },
+    {
+      "date": "2023-04-06",
+      "amount": 2547.17,
+      "type": "BUY",
+      "symbol": "GOOGL"
+    },
+    {
+      "date": "2023-12-06",
+      "amount": 2873.05,
+      "type": "DIVIDEND",
+      "symbol": "AAPL"
+    },
+    {
+      "date": "2023-04-10",
+      "amount": 1389.93,
+      "type": "BUY",
+      "symbol": "VOO"
+    },
+    {
+      "date": "2023-06-18",
+      "amount": 3725.59,
+      "type": "DIVIDEND",
+      "symbol": "MSFT"
+    },
+    {
+      "date": "2023-08-25",
+      "amount": 1047.21,
+      "type": "DIVIDEND",
+      "symbol": "VTI"
+    },
+    {
+      "date": "2023-12-09",
+      "amount": 4062.31,
+      "type": "SELL",
+      "symbol": "GOOGL"
+    },
+    {
+      "date": "2023-07-13",
+      "amount": 4262.71,
+      "type": "SELL",
+      "symbol": "GOOGL"
+    },
+    {
+      "date": "2023-08-15",
+      "amount": 1375.79,
+      "type": "BUY",
+      "symbol": "MSFT"
+    },
+    {
+      "date": "2023-08-11",
+      "amount": 4863.48,
+      "type": "BUY",
+      "symbol": "VOO"
+    },
+    {
+      "date": "2023-02-03",
+      "amount": 3089.86,
+      "type": "SELL",
+      "symbol": "AAPL"
+    },
+    {
+      "date": "2023-08-26",
+      "amount": 3615.07,
+      "type": "SELL",
+      "symbol": "VOO"
+    },
+    {
+      "date": "2023-06-02",
+      "amount": 3634.93,
+      "type": "DIVIDEND",
+      "symbol": "VOO"
+    },
+    {
+      "date": "2023-06-14",
+      "amount": 66.34,
+      "type": "SELL",
+      "symbol": "GOOGL"
+    }
+  ],
+  "positions": 4,
+  "errors": []
+}

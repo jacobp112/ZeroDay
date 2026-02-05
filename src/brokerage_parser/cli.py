@@ -26,10 +26,8 @@ from rich.align import Align
 from rich import box
 
 # --- MOCK / REAL IMPORT TOGGLE ---
-try:
-    from brokerage_parser.orchestrator import process_statement as real_process_statement
-except ImportError:
-    real_process_statement = None
+from brokerage_parser import orchestrator
+from brokerage_parser import export
 
 # --- THEME CONFIGURATION ---
 # Professional enterprise color scheme - muted, sophisticated
@@ -67,15 +65,27 @@ class MockAccount:
     def __init__(self): self.account_number = f"****{random.randint(1000,9999)}"
 
 class MockStatement:
-    def __init__(self, filename):
+    def __init__(self, filename, txn_count=None):
         self.broker = random.choice(["Fidelity", "Vanguard", "Schwab", "E*TRADE", "Morgan Stanley"])
         self.account = MockAccount()
         self.statement_date = datetime.now().strftime("%Y-%m-%d")
-        self.transactions = [{"date": "2023-01-01", "amount": round(random.uniform(10.0, 5000.0), 2)} for _ in range(random.randint(0, 25))]
-        self.positions = [1] * random.randint(0, 10)
+
+        # Determine transaction count: explicit, or random based on demo variance
+        count = txn_count if txn_count is not None else random.randint(5, 50)
+
+        self.transactions = [
+            {
+                "date": f"2023-{random.randint(1,12):02d}-{random.randint(1,28):02d}",
+                "amount": round(random.uniform(10.0, 5000.0), 2),
+                "type": random.choice(["BUY", "SELL", "DIVIDEND"]),
+                "symbol": random.choice(["AAPL", "GOOGL", "MSFT", "TSLA", "VTI", "VOO"])
+            }
+            for _ in range(count)
+        ]
+        self.positions = [1] * random.randint(1, 15)
         self.parse_errors = []
 
-        # Simulation Logic
+        # Simulation Logic - deterministic based on filename for demo consistency
         if "error" in str(filename).lower():
             raise ValueError("Corrupted PDF Structure / Encryption Failed")
         if "partial" in str(filename).lower():
@@ -90,16 +100,20 @@ class MockStatement:
             "errors": self.parse_errors
         }
 
-# Global toggle
-USE_MOCK = False
+# Global Settings
+GLOBAL_SETTINGS = {
+    "include_sources": False,
+    "output_format": "json"  # json, csv, markdown
+}
 
-def process_wrapper(path):
+def process_wrapper(path, include_sources=False, mock_txn_count=None):
     """Wrapper to switch between Mock and Real logic dynamically."""
-    if USE_MOCK or real_process_statement is None:
+    if USE_MOCK:
         # Simulate varying processing times for realism
-        time.sleep(random.uniform(0.3, 1.2))
-        return MockStatement(path)
-    return real_process_statement(path)
+        time.sleep(random.uniform(0.3, 0.8))
+        return MockStatement(path, txn_count=mock_txn_count)
+    # REAL LOGIC
+    return orchestrator.process_statement(str(path), include_sources=include_sources)
 
 # --- UI COMPONENT MANAGER ---
 
@@ -186,7 +200,7 @@ class Dashboard:
 
 # --- MAIN LOGIC ---
 
-def process_batch(pdf_files: List[Path], args):
+def process_batch(pdf_files: List[Path], args, mock_txn_count=None):
     """
     Process a batch of PDFs with TTY-aware output.
 
@@ -202,15 +216,20 @@ def process_batch(pdf_files: List[Path], args):
     use_ndjson = getattr(args, 'ndjson', False)
     use_quiet = getattr(args, 'quiet', False)
 
+    # Priority: Args > Global Settings
+    include_sources = getattr(args, 'include_sources', False) or GLOBAL_SETTINGS["include_sources"]
+    output_format = getattr(args, 'format', None) or GLOBAL_SETTINGS["output_format"]
+    output_dir = getattr(args, 'output', None)
+
     if use_json or use_ndjson or use_quiet or not IS_TTY:
         # Machine-readable or non-interactive mode
-        return process_batch_plain(pdf_files, args)
+        return process_batch_plain(pdf_files, args, include_sources, output_format, output_dir, mock_txn_count)
     else:
         # Interactive terminal: use rich dashboard
-        return process_batch_gui(pdf_files, args)
+        return process_batch_gui(pdf_files, args, include_sources, output_format, output_dir, mock_txn_count)
 
 
-def process_batch_plain(pdf_files: List[Path], args):
+def process_batch_plain(pdf_files: List[Path], args, include_sources, output_format, output_dir, mock_txn_count=None):
     """
     Process PDFs with machine-readable or plain text output.
 
@@ -242,7 +261,7 @@ def process_batch_plain(pdf_files: List[Path], args):
         }
 
         try:
-            statement = process_wrapper(str(pdf))
+            statement = process_wrapper(str(pdf), include_sources=include_sources, mock_txn_count=mock_txn_count)
 
             result["broker"] = statement.broker
             acc = getattr(statement.account, 'account_number', str(statement.account))
@@ -266,6 +285,21 @@ def process_batch_plain(pdf_files: List[Path], args):
                 print(f"[{i}/{len(pdf_files)}] FAIL: {pdf.name} - {e}", file=sys.stderr)
 
         results_data.append(result)
+
+        # Export Logic
+        if output_dir:
+            out_path = Path(output_dir)
+            out_path.mkdir(parents=True, exist_ok=True)
+
+            base_name = pdf.stem
+            if output_format == "json":
+                export.to_json(statement, str(out_path / f"{base_name}.json"))
+            elif output_format == "csv":
+                export.to_csv(statement, str(out_path / f"{base_name}.csv"))
+            elif output_format == "markdown":
+                if hasattr(export, 'to_markdown'):
+                        export.to_markdown(statement, str(out_path / f"{base_name}.md"))
+
 
         # NDJSON: Stream each result immediately
         if use_ndjson:
@@ -296,7 +330,7 @@ def process_batch_plain(pdf_files: List[Path], args):
     return results_data
 
 
-def process_batch_gui(pdf_files: List[Path], args):
+def process_batch_gui(pdf_files: List[Path], args, include_sources, output_format, output_dir, mock_txn_count=None):
     """Interactive Rich dashboard for TTY environments."""
     dashboard = Dashboard()
     results_data = []
@@ -324,7 +358,7 @@ def process_batch_gui(pdf_files: List[Path], args):
 
             try:
                 # --- PARSE ---
-                statement = process_wrapper(str(pdf))
+                statement = process_wrapper(str(pdf), include_sources=include_sources, mock_txn_count=mock_txn_count)
                 # -------------
 
                 result["broker"] = statement.broker
@@ -342,10 +376,23 @@ def process_batch_gui(pdf_files: List[Path], args):
                     dashboard.log(f"Parsed {pdf.name}: {result['txns']} txns", level="success")
 
                 # Export Logic
-                if args.output:
-                    save_path = Path(args.output) / f"{pdf.stem}.{args.format}"
-                    # (Mock save logic)
-                    dashboard.log(f"Saved to {save_path.name}", level="info")
+                if output_dir:
+                    out_path = Path(output_dir)
+                    out_path.mkdir(parents=True, exist_ok=True)
+
+                    base_name = pdf.stem
+                    if output_format == "json":
+                        export.to_json(statement, str(out_path / f"{base_name}.json"))
+                    elif output_format == "csv":
+                        export.to_csv(statement, str(out_path / f"{base_name}.csv"))
+                    elif output_format == "markdown":
+                        # We just added this to export.py
+                        if hasattr(export, 'to_markdown'):
+                             export.to_markdown(statement, str(out_path / f"{base_name}.md"))
+                        else:
+                            dashboard.log(f"Markdown export not implemented", level="warn")
+
+                    dashboard.log(f"Saved {output_format.upper()} to {out_path.name}", level="info")
 
             except Exception as e:
                 result["status"] = "Failed"
@@ -377,7 +424,84 @@ def process_batch_gui(pdf_files: List[Path], args):
             live.update(dashboard.update_layout())
 
     # End of Live Context
+    # End of Live Context
     show_final_report(results_data)
+    return results_data
+
+def run_demo_mode():
+    """Run a comprehensive demonstration with simulated data."""
+    from rich.prompt import IntPrompt
+
+    global USE_MOCK
+
+    console.print(Panel("[bold cyan]Comprehensive Demo Mode[/]\n\nThis will simulate a batch processing run with generated data.\nArtifacts will be saved to [bold]demo_output/[/].", box=box.ROUNDED))
+
+    file_count = IntPrompt.ask("Number of statements to simulate", default=5)
+    txn_count = IntPrompt.ask("Average transactions per statement", default=25)
+
+    console.print(f"\n[green]Initializing demo with {file_count} files (~{txn_count} txns each)...[/]\n")
+    time.sleep(1)
+
+    # Enable Mock Mode
+    USE_MOCK = True
+
+    # Generate fake filenames with some "failures" injected
+    filenames = []
+    for i in range(1, file_count + 1):
+        if i == file_count: # Last one might be broken for demo effect
+            filenames.append(Path("corrupted_scan_2023.pdf"))
+        elif i == 2:
+            filenames.append(Path("partial_read_warning.pdf"))
+        else:
+            filenames.append(Path(f"statement_2023_{i:02d}.pdf"))
+
+    # Prepare Demo Arguments
+    demo_args = argparse.Namespace(
+        output="demo_output",
+        format=GLOBAL_SETTINGS["output_format"],
+        json=False, ndjson=False, quiet=False, include_sources=True
+    )
+
+    # Run Batch
+    results = process_batch(filenames, demo_args, mock_txn_count=txn_count)
+
+    # Cleanup
+    USE_MOCK = False
+    console.print("\n[bold cyan]Demo Complete![/] Generated reports are in the [bold]demo_output/[/] folder.")
+
+    # Check for issues and prompt for Frontend
+    has_issues = any(r['status'] != 'success' for r in results)
+
+    if has_issues:
+        from rich.prompt import Confirm
+        import shutil
+        from brokerage_parser import storage
+
+        console.print("\n[bold yellow]Attention Needed:[/]")
+        console.print("Visual verification required for flagged statements.")
+
+        # Seed a real "partial" file for the demo
+        # detailed logic: we check if there is a 'partial_read_warning.pdf' in the file list
+        # if so, we copy a sample file to act as it, store it, and get an ID
+
+        sample_source = Path("samples/schwab_sample.pdf")
+        demo_url = "http://localhost:5173"
+
+        if sample_source.exists():
+            # "Simulate" the corrupted file by just using a good one but calling it corrupted
+            # In a real demo this might be a specific bad file
+            try:
+                doc_id = storage.store_document(sample_source)
+                demo_url = f"http://localhost:5173/?doc_id={doc_id}"
+                console.print(f"Document seeded to storage (ID: {doc_id[:8]}...)")
+            except Exception as e:
+                console.print(f"[dim]Could not seed storage: {e}[/]")
+
+        if Confirm.ask("Launch Reconciliation Workbench (Frontend) to verify?"):
+            start_frontend(url=demo_url)
+
+    console.print("[dim]Press Enter to return to menu...[/]")
+    input()
 
 def show_final_report(results):
     """Generates a static report after the live mode exits."""
@@ -480,9 +604,10 @@ def interactive_menu():
 
         menu.add_row("[1]", "Process Single PDF", "Parse one statement")
         menu.add_row("[2]", "Batch Process", "Process all PDFs in a directory")
-        menu.add_row("[3]", "Start API Server", "Launch REST API endpoint")
-        menu.add_row("[4]", "Demo Mode", "Run with sample data")
-        menu.add_row("[5]", "Exit", "")
+        menu.add_row("[4]", "Run Comprehensive Demo", "Simulated batch with customization")
+        menu.add_row("[5]", "Start Frontend UI", "Launch React Workbench")
+        menu.add_row("[6]", "Settings", f"Src: {GLOBAL_SETTINGS['include_sources']} | Fmt: {GLOBAL_SETTINGS['output_format']}")
+        menu.add_row("[0]", "Exit", "")
 
         console.print(Align.center(menu))
         console.print()
@@ -498,7 +623,7 @@ def interactive_menu():
         )))
         console.print()
 
-        choice = Prompt.ask(" Select Option", choices=["1", "2", "3", "4", "5"], default="1")
+        choice = Prompt.ask(" Select Option", choices=["1", "2", "3", "4", "5", "6", "0"], default="1")
 
         if choice == "1":
             path = Prompt.ask("Enter PDF path")
@@ -509,17 +634,68 @@ def interactive_menu():
         elif choice == "3":
             start_api_server()
         elif choice == "4":
-            global USE_MOCK
-            USE_MOCK = True
-            # Create dummy files list
-            f = [Path(f"statement_{2023}_{i:02d}.pdf") for i in range(1, 8)]
-            f.append(Path("corrupted_scan.pdf"))
-            f.append(Path("partial_read_vanguard.pdf"))
-            process_batch(f, argparse.Namespace(output=".", format="json"))
-            USE_MOCK = False
+            run_demo_mode()
         elif choice == "5":
+            start_frontend()
+        elif choice == "6":
+            configure_settings()
+        elif choice == "0":
             console.print("[cyan]Shutting down...[/]")
             sys.exit()
+
+def configure_settings():
+    """Sub-menu for settings."""
+    from rich.prompt import Confirm, Prompt
+    console.print("\n[bold]Configuration[/]")
+
+    # Toggle Include Sources
+    current_src = GLOBAL_SETTINGS["include_sources"]
+    if Confirm.ask(f"Include Source Lineage (Bounding Boxes)? (Current: {current_src})", default=current_src):
+        GLOBAL_SETTINGS["include_sources"] = True
+    else:
+        GLOBAL_SETTINGS["include_sources"] = False
+
+    # Select Output Format
+    console.print(f"\nCurrent Output Format: [bold]{GLOBAL_SETTINGS['output_format']}[/]")
+    console.print("1. JSON")
+    console.print("2. CSV")
+    console.print("3. Markdown")
+    fmt_choice = Prompt.ask("Select Format", choices=["1", "2", "3"], default="1")
+    if fmt_choice == "1": GLOBAL_SETTINGS["output_format"] = "json"
+    elif fmt_choice == "2": GLOBAL_SETTINGS["output_format"] = "csv"
+    elif fmt_choice == "3": GLOBAL_SETTINGS["output_format"] = "markdown"
+
+    console.print("[green]Settings updated![/]\n")
+    time.sleep(1)
+
+def start_frontend(url=None):
+    """Launch the frontend development server."""
+    import subprocess
+    import webbrowser
+
+    console.print("\n[bold cyan]Starting Frontend UI...[/]")
+    console.print("[dim]Please ensure you have run 'npm install' in the frontend directory.[/]")
+
+    frontend_dir = Path(__file__).parent.parent.parent / "frontend"
+    if not frontend_dir.exists():
+        console.print("[red]Frontend directory not found![/]")
+        time.sleep(2)
+        return
+
+    # Open the browser to the target URL (autoload or default)
+    target_url = url if url else "http://localhost:5173"
+    webbrowser.open(target_url)
+
+    try:
+        # We assume 'npm run dev' is the command.
+        # On Windows, use shell=True or full path to npm.cmd
+        cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+        subprocess.run([cmd, "run", "dev"], cwd=frontend_dir)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Frontend stopped.[/]")
+    except Exception as e:
+        console.print(f"\n[red]Failed to start frontend: {e}[/]")
+        time.sleep(3)
 
 def start_api_server():
     """Start the FastAPI server."""
@@ -592,6 +768,11 @@ def main():
         help="Output directory for parsed results"
     )
     parser.add_argument(
+        "--include-sources",
+        action="store_true",
+        help="Include source lineage (bounding boxes) in output"
+    )
+    parser.add_argument(
         "--format", "-f",
         choices=["json", "csv", "markdown"],
         default="json",
@@ -607,6 +788,11 @@ def main():
         type=int,
         default=8000,
         help="Port for API server (default: 8000)"
+    )
+    parser.add_argument(
+        "--ui",
+        action="store_true",
+        help="Start the Frontend UI"
     )
     parser.add_argument(
         "--mock",
@@ -636,7 +822,9 @@ def main():
 
     args = parser.parse_args()
 
-    if args.serve:
+    if args.ui:
+        start_frontend()
+    elif args.serve:
         # Start API server
         import subprocess
         console.print("[bold cyan]Starting ParseFin API Server...[/]")

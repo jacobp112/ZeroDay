@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum
 import hashlib
 import re
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from dataclasses import dataclass, field, asdict
 
@@ -38,6 +38,32 @@ class TransactionType(Enum):
     TRANSFER_OUT = "TRANSFER_OUT"
     FEE = "FEE"
     OTHER = "OTHER"
+
+@dataclass
+class BoundingBox:
+    page: int
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+class ExtractionMethod(Enum):
+    NATIVE_TEXT = "native_text"
+    NATIVE_TABLE = "native_table"
+    OCR = "ocr"
+    REGEX_FALLBACK = "regex_fallback"
+    IMPLICIT_TABLE = "implicit_table"
+    INFERRED = "inferred"
+    VISUAL_HEURISTIC = "visual_heuristic"
+    LLM_FALLBACK = "llm_fallback"
+
+@dataclass
+class SourceReference:
+    bboxes: List[BoundingBox]
+    extraction_method: ExtractionMethod
+    confidence: float = 1.0
+    raw_text: Optional[str] = None
+
 
 def validate_isin(isin: str) -> bool:
     """ISIN: 12 chars, first 2 are country code (letters), last is check digit."""
@@ -93,6 +119,8 @@ class Transaction:
     settlement_date: Optional[date] = None
     trade_date: Optional[date] = None
     transaction_id: Optional[str] = None
+    # Source Tracking
+    source_map: Optional[Dict[str, SourceReference]] = field(default=None, repr=False)
 
     def to_dict(self):
         base_dict = {
@@ -133,6 +161,8 @@ class Position:
     gbp_market_value: Optional[Decimal] = None
     cost_basis_gbp: Optional[Decimal] = None
     unrealised_gain_gbp: Optional[Decimal] = None
+    # Source Tracking
+    source_map: Optional[Dict[str, SourceReference]] = field(default=None, repr=False)
 
     def to_dict(self):
         base_dict = {
@@ -208,6 +238,8 @@ class ParsedStatement:
     currency: str = "GBP"
     custodian: Optional[str] = None
     corporate_actions: List[CorporateAction] = field(default_factory=list)
+    # Source Tracking
+    source_map: Optional[Dict[str, SourceReference]] = field(default=None, repr=False)
 
     def validate(self) -> None:
         """

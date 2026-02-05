@@ -15,12 +15,13 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, status
+from fastapi import FastAPI, File, HTTPException, UploadFile, status, Query
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from brokerage_parser import orchestrator
+from brokerage_parser import orchestrator, storage
 from brokerage_parser.reporting.models import ClientReport
 
 logger = logging.getLogger(__name__)
@@ -180,6 +181,20 @@ app = FastAPI(
     terms_of_service="https://parsefin.io/terms",
 )
 
+# CORS Configuration
+origins = [
+    "http://localhost:5173",  # Vite default
+    "http://localhost:3000",  # React default
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 def serialize_value(value: Any) -> Any:
     """
@@ -333,7 +348,8 @@ async def health_check():
     }
 )
 async def parse_statement(
-    file: UploadFile = File(..., description="PDF brokerage statement to parse")
+    file: UploadFile = File(..., description="PDF brokerage statement to parse"),
+    include_sources: bool = Query(False, description="Include source lineage data (bounding boxes) in the response")
 ):
     """
     ## Parse Brokerage Statement
@@ -394,11 +410,20 @@ async def parse_statement(
 
         logger.info(f"Processing uploaded file: {file.filename} -> {temp_path}")
 
-        # 3. Process the statement using the orchestrator
-        report: ClientReport = orchestrator.process_statement(temp_path)
+        # 3. Process the statement using the orchestrator (with optional source tracking)
+        report: ClientReport = orchestrator.process_statement(temp_path, include_sources=include_sources)
 
-        # 4. Serialize and return the report
+        # 4. Store the document for later retrieval (if successful parse)
+        # We re-read the temp file to calculate ID and store
+        file_id = storage.store_document(Path(temp_path))
+        logger.info(f"Stored document with ID: {file_id}")
+
+        # 5. Serialize and return the report
         serialized = serialize_report(report)
+        # Inject document ID into metadata for frontend retrieval
+        if "metadata" in serialized and isinstance(serialized["metadata"], dict):
+            serialized["metadata"]["document_id"] = file_id
+
         return JSONResponse(
             content=serialized,
             status_code=200,
@@ -432,3 +457,28 @@ async def parse_statement(
                 logger.debug(f"Cleaned up temp file: {temp_path}")
             except OSError as e:
                 logger.warning(f"Failed to delete temp file {temp_path}: {e}")
+
+
+@app.get(
+    "/v1/documents/{doc_id}/content",
+    tags=["Parsing"],
+    summary="Get Document Content",
+    description="Retrieve the original PDF content for a processed document.",
+    responses={
+        200: {
+            "description": "PDF file content",
+            "content": {"application/pdf": {}}
+        },
+        404: {"description": "Document not found"}
+    }
+)
+async def get_document_content(doc_id: str):
+    """
+    Retrieve the raw PDF content for a given document ID.
+    Used by the frontend to display the original statement.
+    """
+    path = storage.get_document_path(doc_id)
+    if not path:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    return FileResponse(path, media_type="application/pdf", filename=f"{doc_id}.pdf")

@@ -14,6 +14,10 @@ from unittest.mock import patch, MagicMock
 from brokerage_parser.cli import (
     find_pdf_files,
     main,
+    process_batch_plain,
+    configure_settings,
+    start_frontend,
+    GLOBAL_SETTINGS
 )
 from brokerage_parser.models import ParsedStatement
 
@@ -124,3 +128,101 @@ class TestCLIIntegration:
 
         output = result.stdout or result.stderr
         assert "No PDF files found" in output
+        output = result.stdout or result.stderr
+        assert "No PDF files found" in output
+
+class TestCLIFeatures:
+    """Tests for new CLI features (Settings, Frontend, Export)."""
+
+    def test_settings_configuration(self):
+        """Verify configure_settings updates GLOBAL_SETTINGS."""
+        # Mock Confirm.ask and Prompt.ask
+        # Sequence:
+        # 1. Confirm "Include Sources?" -> True
+        # 2. Prompt "Select Format" -> "3" (Markdown)
+        with patch('rich.prompt.Confirm.ask', side_effect=[True]), \
+             patch('rich.prompt.Prompt.ask', side_effect=["3"]):
+
+            configure_settings()
+
+            assert GLOBAL_SETTINGS["include_sources"] is True
+            assert GLOBAL_SETTINGS["output_format"] == "markdown"
+
+    @patch('subprocess.run')
+    def test_start_frontend(self, mock_run):
+        """Verify start_frontend calls npm run dev."""
+        # Mock directory existence check
+        with patch('pathlib.Path.exists', return_value=True):
+            start_frontend()
+
+            assert mock_run.called
+            args, kwargs = mock_run.call_args
+            # On Windows it might be npm.cmd, on others npm
+            cmd_list = args[0]
+            assert "npm" in cmd_list[0] or "npm.cmd" in cmd_list[0]
+            assert "run" in cmd_list[1]
+            assert "dev" in cmd_list[2]
+
+    @patch('brokerage_parser.export.to_markdown')
+    @patch('brokerage_parser.cli.process_wrapper')
+    def test_markdown_export_execution(self, mock_process, mock_md_export, tmp_path):
+        """Verify process_batch_plain calls to_markdown when format is markdown."""
+        # Setup mock statement
+        mock_stmt = MagicMock(spec=ParsedStatement)
+        # Attribute access on mock needs to be explicit for some properties if used
+        mock_stmt.broker = "TestBroker"
+        mock_stmt.account = "1234"
+        mock_stmt.transactions = []
+        mock_stmt.parse_errors = []
+        mock_process.return_value = mock_stmt
+
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.touch()
+
+        # Run process_batch_plain with markdown format
+        # Signature: process_batch_plain(pdf_files, args, include_sources, output_format, output_dir)
+        process_batch_plain(
+            [pdf_file],
+            MagicMock(),
+            include_sources=False,
+            output_format="markdown",
+            output_dir=str(tmp_path / "out")
+        )
+
+        assert mock_md_export.called
+        # Check arguments passed to to_markdown
+        args, _ = mock_md_export.call_args
+        assert args[0] == mock_stmt
+        assert str(args[1]).endswith(".md")
+
+    @patch('brokerage_parser.cli.start_frontend')
+    @patch('brokerage_parser.cli.process_batch')
+    def test_run_demo_mode(self, mock_process_batch, mock_start_frontend):
+        """Verify run_demo_mode prompts for input and handles Frontend handoff."""
+        from brokerage_parser.cli import run_demo_mode
+
+        # Setup mock results with a failure to trigger the handoff prompt
+        mock_process_batch.return_value = [
+            {"status": "Success"},
+            {"status": "Partial"} # Trigger warning
+        ]
+
+        # Mock Sequence:
+        # 1. IntPrompt.ask -> 3 (files)
+        # 2. IntPrompt.ask -> 10 (txns)
+        # 3. Confirm.ask -> True (Launch Frontend?)
+        # 4. input() -> "" (Press Enter)
+        with patch('rich.prompt.IntPrompt.ask', side_effect=[3, 10]), \
+             patch('rich.prompt.Confirm.ask', side_effect=[True]), \
+             patch('builtins.input', return_value=""):
+
+            run_demo_mode()
+
+            # Verify batch processing called
+            assert mock_process_batch.called
+
+            # Verify frontend launch called with a URL
+            assert mock_start_frontend.called
+            call_args = mock_start_frontend.call_args
+            assert call_args.kwargs.get('url') is not None
+            assert "doc_id=" in call_args.kwargs['url']
