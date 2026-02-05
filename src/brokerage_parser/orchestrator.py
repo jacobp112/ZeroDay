@@ -85,6 +85,7 @@ def process_statement(pdf_path: str) -> ParsedStatement:
     try:
         logger.info(f"Parsing with {parser.__class__.__name__}...")
         statement = parser.parse()
+        statement.validate()
         return statement
     except Exception as e:
         logger.error(f"Parsing error: {e}")

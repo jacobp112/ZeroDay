@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
+from decimal import Decimal
 from brokerage_parser.orchestrator import process_statement
 from brokerage_parser.models import ParsedStatement
 
@@ -21,6 +22,8 @@ def test_process_statement_success(mock_get_parser, mock_detect, mock_extract, t
     # Mock ParsedStatement with AccountSummary
     mock_account = MagicMock()
     mock_account.account_number = "123"
+    mock_account.beginning_balance = Decimal("100.00")
+    mock_account.ending_balance = Decimal("100.00")
 
     mock_statement = ParsedStatement(broker="Schwab", account=mock_account)
     mock_parser_instance.parse.return_value = mock_statement
