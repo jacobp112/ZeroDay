@@ -2,9 +2,20 @@ from pathlib import Path
 import fitz  # PyMuPDF
 from typing import Dict, List, Optional
 import logging
+import io
 
 # Configure logger
 logger = logging.getLogger(__name__)
+
+# Optional OCR support - gracefully handle if not installed
+try:
+    import pytesseract
+    from PIL import Image
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+    pytesseract = None
+    Image = None
 
 # Type alias for clarity: List of columns -> List of cells
 # Using simple List[List[str]] for rows -> cells is more intuitive.
@@ -115,12 +126,52 @@ def extract_text_with_layout(pdf_path: Path) -> Dict[int, str]:
         return {}
 
 
+def _attempt_ocr(page) -> str:
+    """
+    Attempt to extract text from a page using OCR.
+
+    This is a fallback for scanned PDFs where native text extraction fails.
+    Gracefully handles missing Tesseract installation.
+
+    Args:
+        page: A PyMuPDF page object.
+
+    Returns:
+        Extracted text string, or empty string if OCR is unavailable/fails.
+    """
+    if not OCR_AVAILABLE:
+        logger.warning("OCR requested but pytesseract/Pillow not installed. Skipping OCR.")
+        return ""
+
+    try:
+        # Render page to image at 300 DPI for good OCR quality
+        pix = page.get_pixmap(dpi=300)
+        img_data = pix.tobytes("png")
+        image = Image.open(io.BytesIO(img_data))
+
+        # Run OCR
+        text = pytesseract.image_to_string(image)
+
+        if text and len(text.strip()) > 0:
+            logger.info(f"OCR successfully extracted {len(text.strip())} characters from scanned page.")
+
+        return text
+
+    except pytesseract.TesseractNotFoundError:
+        logger.warning("Tesseract OCR engine not found. Install Tesseract and add to PATH.")
+        return ""
+    except Exception as e:
+        logger.warning(f"OCR failed: {e}")
+        return ""
+
+
 def extract_text(pdf_path: Path) -> Dict[int, str]:
     """
-    Extracts text from a PDF file using only native extraction (PyMuPDF).
+    Extracts text from a PDF file using native extraction (PyMuPDF).
 
-    Compatible with environments without admin rights (no Tesseract/Poppler).
-    Logs a warning if a page has very little text (<20 chars), which might indicate a scan.
+    If a page has very little text (<50 chars), attempts OCR extraction
+    as a fallback for scanned documents. OCR is optional - if Tesseract
+    is not installed, the tool will warn and continue without crashing.
 
     Args:
         pdf_path (Path): Path to the PDF file.
@@ -144,12 +195,16 @@ def extract_text(pdf_path: Path) -> Dict[int, str]:
             text = page.get_text()
             stripped_text = text.strip()
 
-            # Simple heuristic: if text is too short, warn user
+            # Heuristic: if text is too short, may be scanned - try OCR
             char_count = len(stripped_text)
-            if char_count < 20:
+            if char_count < 50:
                 logger.warning(
-                    f"Page {page_num} has only {char_count} characters. May be blank or scanned."
+                    f"Page {page_num} has only {char_count} characters. Attempting OCR..."
                 )
+                ocr_text = _attempt_ocr(page)
+                if ocr_text and len(ocr_text.strip()) > char_count:
+                    text = ocr_text
+                    logger.info(f"Page {page_num}: Using OCR text ({len(ocr_text.strip())} chars)")
 
             extracted_data[page_num] = text
 

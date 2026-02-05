@@ -14,6 +14,7 @@ pillow = "^10.2.0"           # Image processing
 pandas = "^2.2.0"            # Data handling
 pydantic = "^2.6.0"          # Validation
 tqdm = "^4.66.0"             # Progress bars
+pytesseract = "^0.3.10"      # OCR wrapper (optional - requires Tesseract)
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

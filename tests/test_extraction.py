@@ -52,7 +52,7 @@ def test_extract_text_low_content_warning(mock_pdf_path, caplog):
 
         # Verify warning was logged
         assert "has only" in caplog.text
-        assert "May be blank or scanned" in caplog.text
+        assert "Attempting OCR" in caplog.text
 
 def test_file_not_found():
     with pytest.raises(FileNotFoundError):
