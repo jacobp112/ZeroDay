@@ -67,7 +67,141 @@ class VanguardParser(Parser):
 
         return None
 
+    def _parse_positions_from_tables(self) -> List[Position]:
+        """Extract positions from structured table data.
+
+        Vanguard often puts the ticker symbol inside the Description column
+        (e.g., "Vanguard 500 Index Fund Admiral Shares VFIAX").
+        """
+        positions = []
+        pos_tables = self._get_tables_by_type("positions")
+
+        for table in pos_tables:
+            if len(table) < 2:
+                continue
+
+            # Find header row and map columns
+            header_row = [str(c).lower().strip() for c in table[0]]
+            start_row = 1
+
+            col_map = {
+                "symbol": -1,
+                "description": -1,
+                "quantity": -1,
+                "price": -1,
+                "value": -1
+            }
+
+            for idx, col_text in enumerate(header_row):
+                if "symbol" in col_text or "ticker" in col_text:
+                    col_map["symbol"] = idx
+                elif "investment" in col_text or "fund" in col_text or "name" in col_text or "description" in col_text:
+                    col_map["description"] = idx
+                elif "shares" in col_text or "quantity" in col_text or "units" in col_text:
+                    col_map["quantity"] = idx
+                elif "price" in col_text or "nav" in col_text:
+                    col_map["price"] = idx
+                elif "balance" in col_text or "value" in col_text or "total" in col_text:
+                    col_map["value"] = idx
+
+            # Retry with row 1 if header not found
+            if col_map["description"] == -1 and len(table) > 1:
+                header_row = [str(c).lower().strip() for c in table[1]]
+                for idx, col_text in enumerate(header_row):
+                    if "symbol" in col_text or "ticker" in col_text:
+                        col_map["symbol"] = idx
+                    elif "investment" in col_text or "fund" in col_text or "name" in col_text:
+                        col_map["description"] = idx
+                    elif "shares" in col_text or "quantity" in col_text:
+                        col_map["quantity"] = idx
+                    elif "price" in col_text or "nav" in col_text:
+                        col_map["price"] = idx
+                    elif "balance" in col_text or "value" in col_text:
+                        col_map["value"] = idx
+                start_row = 2
+
+            # Parse data rows
+            for i in range(start_row, len(table)):
+                row = table[i]
+                if not row or len(row) < 3:
+                    continue
+
+                try:
+                    # Extract symbol
+                    symbol = ""
+                    if col_map["symbol"] != -1 and col_map["symbol"] < len(row):
+                        symbol = str(row[col_map["symbol"]]).strip().upper()
+
+                    # Extract description
+                    description = ""
+                    if col_map["description"] != -1 and col_map["description"] < len(row):
+                        description = str(row[col_map["description"]]).strip()
+
+                    # Vanguard quirk: ticker is often at the END of the description
+                    # e.g., "Vanguard 500 Index Fund Admiral Shares VFIAX"
+                    EXCLUDED_WORDS = {"FUND", "INDEX", "ADMIRAL", "SHARES", "VANGUARD", "TOTAL", "MARKET", "BOND", "STOCK", "REAL", "ESTATE", "ETF"}
+
+                    if not symbol and description:
+                        # Look for ticker at end of description (common Vanguard pattern)
+                        desc_parts = description.split()
+                        if desc_parts:
+                            last_word = desc_parts[-1].upper()
+                            if re.match(r'^[A-Z]{3,5}$', last_word) and last_word not in EXCLUDED_WORDS:
+                                symbol = last_word
+
+                        # Fallback: look for any ticker pattern
+                        if not symbol:
+                            ticker_match = re.search(r'\b([A-Z]{3,5})\b', description.upper())
+                            if ticker_match:
+                                candidate = ticker_match.group(1)
+                                if candidate not in EXCLUDED_WORDS:
+                                    symbol = candidate
+
+                    if not symbol:
+                        # Use first few words of description
+                        symbol = " ".join(description.split()[:3]) if description else "UNKNOWN"
+
+                    # Extract quantity
+                    quantity = Decimal("0")
+                    if col_map["quantity"] != -1 and col_map["quantity"] < len(row):
+                        quantity = self._parse_decimal(str(row[col_map["quantity"]])) or Decimal("0")
+
+                    # Extract price
+                    price = Decimal("0")
+                    if col_map["price"] != -1 and col_map["price"] < len(row):
+                        price = self._parse_decimal(str(row[col_map["price"]])) or Decimal("0")
+
+                    # Extract market value
+                    market_value = Decimal("0")
+                    if col_map["value"] != -1 and col_map["value"] < len(row):
+                        market_value = self._parse_decimal(str(row[col_map["value"]])) or Decimal("0")
+                    else:
+                        market_value = self._parse_decimal(str(row[-1])) or Decimal("0")
+
+                    # Skip header/footer rows
+                    if symbol.lower() in ["symbol", "total", "subtotal", "account", "", "investment"]:
+                        continue
+
+                    if market_value != Decimal("0") or quantity != Decimal("0"):
+                        positions.append(Position(
+                            symbol=symbol,
+                            description=description or symbol,
+                            quantity=quantity,
+                            price=price,
+                            market_value=market_value
+                        ))
+                except Exception:
+                    continue
+
+        return positions
+
     def _parse_positions(self) -> List[Position]:
+        # 1. Try Table Extraction
+        table_positions = self._parse_positions_from_tables()
+        if table_positions:
+            return table_positions
+
+        # 2. Fallback to regex-based extraction
         positions = []
         headers = ["Investment Holdings", "Your Investments", "Fund Holdings", "Balances"]
         lines = []

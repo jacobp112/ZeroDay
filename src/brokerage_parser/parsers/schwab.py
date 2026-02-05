@@ -68,7 +68,127 @@ class SchwabParser(Parser):
 
         return None
 
+    def _parse_positions_from_tables(self) -> List[Position]:
+        """Extract positions from structured table data."""
+        positions = []
+        pos_tables = self._get_tables_by_type("positions")
+
+        for table in pos_tables:
+            if len(table) < 2:
+                continue
+
+            # Find header row and map columns
+            header_row = [str(c).lower().strip() for c in table[0]]
+            start_row = 1
+
+            col_map = {
+                "symbol": -1,
+                "description": -1,
+                "quantity": -1,
+                "price": -1,
+                "value": -1
+            }
+
+            for idx, col_text in enumerate(header_row):
+                if "symbol" in col_text or "ticker" in col_text:
+                    col_map["symbol"] = idx
+                elif "description" in col_text or "name" in col_text or "security" in col_text:
+                    col_map["description"] = idx
+                elif "quantity" in col_text or "shares" in col_text or "units" in col_text:
+                    col_map["quantity"] = idx
+                elif "price" in col_text and "last" not in col_text:
+                    col_map["price"] = idx
+                elif "last price" in col_text or "current price" in col_text:
+                    col_map["price"] = idx
+                elif "market value" in col_text or "value" in col_text or "amount" in col_text or "total" in col_text:
+                    col_map["value"] = idx
+
+            # Retry with row 1 if header not found
+            if col_map["symbol"] == -1 and col_map["description"] == -1 and len(table) > 1:
+                header_row = [str(c).lower().strip() for c in table[1]]
+                for idx, col_text in enumerate(header_row):
+                    if "symbol" in col_text or "ticker" in col_text:
+                        col_map["symbol"] = idx
+                    elif "description" in col_text or "name" in col_text or "security" in col_text:
+                        col_map["description"] = idx
+                    elif "quantity" in col_text or "shares" in col_text or "units" in col_text:
+                        col_map["quantity"] = idx
+                    elif "price" in col_text:
+                        col_map["price"] = idx
+                    elif "market value" in col_text or "value" in col_text:
+                        col_map["value"] = idx
+                start_row = 2
+
+            # Parse data rows
+            for i in range(start_row, len(table)):
+                row = table[i]
+                if not row or len(row) < 3:
+                    continue
+
+                try:
+                    # Extract symbol
+                    symbol = ""
+                    if col_map["symbol"] != -1 and col_map["symbol"] < len(row):
+                        symbol = str(row[col_map["symbol"]]).strip().upper()
+
+                    # Extract description
+                    description = ""
+                    if col_map["description"] != -1 and col_map["description"] < len(row):
+                        description = str(row[col_map["description"]]).strip()
+
+                    # If no symbol, try to extract from description
+                    if not symbol and description:
+                        # Look for ticker pattern in description
+                        import re
+                        ticker_match = re.search(r'\b([A-Z]{2,5})\b', description)
+                        if ticker_match:
+                            symbol = ticker_match.group(1)
+
+                    if not symbol:
+                        symbol = description[:20] if description else "UNKNOWN"
+
+                    # Extract quantity
+                    quantity = Decimal("0")
+                    if col_map["quantity"] != -1 and col_map["quantity"] < len(row):
+                        quantity = self._parse_decimal(str(row[col_map["quantity"]])) or Decimal("0")
+
+                    # Extract price
+                    price = Decimal("0")
+                    if col_map["price"] != -1 and col_map["price"] < len(row):
+                        price = self._parse_decimal(str(row[col_map["price"]])) or Decimal("0")
+
+                    # Extract market value
+                    market_value = Decimal("0")
+                    if col_map["value"] != -1 and col_map["value"] < len(row):
+                        market_value = self._parse_decimal(str(row[col_map["value"]])) or Decimal("0")
+                    else:
+                        # Try last column as fallback
+                        market_value = self._parse_decimal(str(row[-1])) or Decimal("0")
+
+                    # Skip header/footer rows
+                    if symbol.lower() in ["symbol", "total", "subtotal", "account", ""]:
+                        continue
+
+                    if market_value != Decimal("0") or quantity != Decimal("0"):
+                        positions.append(Position(
+                            symbol=symbol,
+                            description=description or symbol,
+                            quantity=quantity,
+                            price=price,
+                            market_value=market_value
+                        ))
+                except Exception:
+                    continue
+
+        return positions
+
     def _parse_positions(self) -> List[Position]:
+        # 1. Try Table Extraction
+        table_positions = self._parse_positions_from_tables()
+        if table_positions:
+            return table_positions
+
+        # 2. Fallback to regex-based extraction
         positions = []
         headers = ["Account Holdings", "Portfolio Summary", "Investment Summary", "Positions"]
         lines = []
