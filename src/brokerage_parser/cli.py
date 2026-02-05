@@ -381,7 +381,7 @@ def main():
         dummy = [Path(f"mock_stmt_{i}.pdf") for i in range(5)]
         process_batch_gui(dummy, args)
     elif args.input:
-        process_batch_gui(find_pdf_files(Path(args.input)), args)
+        run_wrapper(args.input)
     else:
         interactive_menu()
 

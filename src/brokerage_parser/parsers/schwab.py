@@ -4,6 +4,9 @@ from decimal import Decimal
 from brokerage_parser.parsers.base import Parser
 from brokerage_parser.models import Transaction, Position, TransactionType, AccountSummary
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 class SchwabParser(Parser):
     def get_broker_name(self) -> str:
@@ -27,25 +30,21 @@ class SchwabParser(Parser):
 
         # 2. Search for Period
         # "Statement Period: January 1, 2023 to January 31, 2023"
-        # "For the period January 1 - January 31, 2023"
+        # "For the period January 1 through January 31, 2023"
 
         # Try full start/end pattern first
-        period_match = self._find_pattern(r"(?:Statement Period:|For the period)\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})\s*(?:to|-)\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})")
+        period_match = self._find_pattern(r"(?:Statement Period:|For the period)\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})\s*(?:to|through|-)\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})")
         if period_match:
             period_start = self._parse_date_flexible(period_match.group(1))
             period_end = self._parse_date_flexible(period_match.group(2))
         else:
-            # Try single year range: "January 1 - 31, 2023" or "January 1 - January 31, 2023" (if year at end)
-            # This regex captures: Month DD (group 1) ... DD (group 2) ... YYYY (group 3)
-            # Be careful not to match too aggressively.
-            # "For the period January 1 - 31, 2023"
+            # Try single year range: "January 1 - 31, 2023"
             range_match = self._find_pattern(r"(?:Statement Period:|For the period)\s*([A-Za-z]+\s+\d{1,2})\s*-\s*(\d{1,2}|[A-Za-z]+\s+\d{1,2}),?\s+(\d{4})")
             if range_match:
                 start_part = range_match.group(1) # "January 1"
                 end_part = range_match.group(2)   # "31" or "January 31"
                 year = range_match.group(3)       # "2023"
 
-                # reconstruct dates
                 period_start = self._parse_date_flexible(f"{start_part} {year}")
 
                 if re.match(r"^\d+$", end_part):
@@ -53,7 +52,6 @@ class SchwabParser(Parser):
                      month = start_part.split()[0]
                      period_end = self._parse_date_flexible(f"{month} {end_part} {year}")
                 else:
-                    # Includes month
                     period_end = self._parse_date_flexible(f"{end_part} {year}")
 
         # Fallback Logic
@@ -69,126 +67,63 @@ class SchwabParser(Parser):
         return None
 
     def _parse_positions_from_tables(self) -> List[Position]:
-        """Extract positions from structured table data."""
         positions = []
-        pos_tables = self._get_tables_by_type("positions")
+        if not self.tables:
+            return []
 
-        for table in pos_tables:
-            if len(table) < 2:
+        for table in self.tables:
+            if not table: continue
+            headers = [str(h).lower() for h in table[0]]
+
+            # Heuristic for Position table
+            if "symbol" not in headers or ("quantity" not in headers and "shares" not in headers):
                 continue
 
-            # Find header row and map columns
-            header_row = [str(c).lower().strip() for c in table[0]]
-            start_row = 1
+            try:
+                idx_symbol = headers.index("symbol")
+                idx_qty = headers.index("quantity") if "quantity" in headers else headers.index("shares")
+                idx_price = headers.index("price") if "price" in headers else -1
+                idx_mv = headers.index("market value") if "market value" in headers else -1
+                if idx_mv == -1 and "amount" in headers: idx_mv = headers.index("amount")
+                if idx_mv == -1 and "value" in headers: idx_mv = headers.index("value")
+                if idx_mv == -1 and "current value" in headers: idx_mv = headers.index("current value")
+                idx_desc = headers.index("description") if "description" in headers else -1
+            except ValueError:
+                continue
 
-            col_map = {
-                "symbol": -1,
-                "description": -1,
-                "quantity": -1,
-                "price": -1,
-                "value": -1
-            }
-
-            for idx, col_text in enumerate(header_row):
-                if "symbol" in col_text or "ticker" in col_text:
-                    col_map["symbol"] = idx
-                elif "description" in col_text or "name" in col_text or "security" in col_text:
-                    col_map["description"] = idx
-                elif "quantity" in col_text or "shares" in col_text or "units" in col_text:
-                    col_map["quantity"] = idx
-                elif "price" in col_text and "last" not in col_text:
-                    col_map["price"] = idx
-                elif "last price" in col_text or "current price" in col_text:
-                    col_map["price"] = idx
-                elif "market value" in col_text or "value" in col_text or "amount" in col_text or "total" in col_text:
-                    col_map["value"] = idx
-
-            # Retry with row 1 if header not found
-            if col_map["symbol"] == -1 and col_map["description"] == -1 and len(table) > 1:
-                header_row = [str(c).lower().strip() for c in table[1]]
-                for idx, col_text in enumerate(header_row):
-                    if "symbol" in col_text or "ticker" in col_text:
-                        col_map["symbol"] = idx
-                    elif "description" in col_text or "name" in col_text or "security" in col_text:
-                        col_map["description"] = idx
-                    elif "quantity" in col_text or "shares" in col_text or "units" in col_text:
-                        col_map["quantity"] = idx
-                    elif "price" in col_text:
-                        col_map["price"] = idx
-                    elif "market value" in col_text or "value" in col_text:
-                        col_map["value"] = idx
-                start_row = 2
-
-            # Parse data rows
-            for i in range(start_row, len(table)):
-                row = table[i]
-                if not row or len(row) < 3:
-                    continue
+            for row in table[1:]:
+                if len(row) <= max(idx_symbol, idx_qty): continue
 
                 try:
-                    # Extract symbol
-                    symbol = ""
-                    if col_map["symbol"] != -1 and col_map["symbol"] < len(row):
-                        symbol = str(row[col_map["symbol"]]).strip().upper()
+                    qty = self._parse_decimal(row[idx_qty])
+                    if qty is None: continue
 
-                    # Extract description
-                    description = ""
-                    if col_map["description"] != -1 and col_map["description"] < len(row):
-                        description = str(row[col_map["description"]]).strip()
+                    symbol = str(row[idx_symbol])
+                    if symbol.lower() in ["total", "account", "subtotal"]: continue
 
-                    # If no symbol, try to extract from description
-                    if not symbol and description:
-                        # Look for ticker pattern in description
-                        import re
-                        ticker_match = re.search(r'\b([A-Z]{2,5})\b', description)
-                        if ticker_match:
-                            symbol = ticker_match.group(1)
+                    price = self._parse_decimal(row[idx_price]) if idx_price >= 0 else Decimal(0)
+                    market_value = self._parse_decimal(row[idx_mv]) if idx_mv >= 0 else Decimal(0)
+                    desc = str(row[idx_desc]) if idx_desc >= 0 else ""
 
-                    if not symbol:
-                        symbol = description[:20] if description else "UNKNOWN"
-
-                    # Extract quantity
-                    quantity = Decimal("0")
-                    if col_map["quantity"] != -1 and col_map["quantity"] < len(row):
-                        quantity = self._parse_decimal(str(row[col_map["quantity"]])) or Decimal("0")
-
-                    # Extract price
-                    price = Decimal("0")
-                    if col_map["price"] != -1 and col_map["price"] < len(row):
-                        price = self._parse_decimal(str(row[col_map["price"]])) or Decimal("0")
-
-                    # Extract market value
-                    market_value = Decimal("0")
-                    if col_map["value"] != -1 and col_map["value"] < len(row):
-                        market_value = self._parse_decimal(str(row[col_map["value"]])) or Decimal("0")
-                    else:
-                        # Try last column as fallback
-                        market_value = self._parse_decimal(str(row[-1])) or Decimal("0")
-
-                    # Skip header/footer rows
-                    if symbol.lower() in ["symbol", "total", "subtotal", "account", ""]:
-                        continue
-
-                    if market_value != Decimal("0") or quantity != Decimal("0"):
-                        positions.append(Position(
-                            symbol=symbol,
-                            description=description or symbol,
-                            quantity=quantity,
-                            price=price,
-                            market_value=market_value
-                        ))
+                    positions.append(Position(
+                        symbol=symbol,
+                        description=desc,
+                        quantity=qty,
+                        price=price,
+                        market_value=market_value
+                    ))
                 except Exception:
                     continue
 
         return positions
 
     def _parse_positions(self) -> List[Position]:
-        # 1. Try Table Extraction
-        table_positions = self._parse_positions_from_tables()
-        if table_positions:
-            return table_positions
+        # Try table parsing first
+        table_pos = self._parse_positions_from_tables()
+        if table_pos:
+            return table_pos
 
-        # 2. Fallback to regex-based extraction
+        # Basic position parsing (can be enhanced later if needed, focusing on Transactions for MVP)
         positions = []
         headers = ["Account Holdings", "Portfolio Summary", "Investment Summary", "Positions"]
         lines = []
@@ -201,15 +136,11 @@ class SchwabParser(Parser):
         if not lines:
             return []
 
-        # Example: AAPL Apple Inc 100 $150.00 $15,000.00
+        # Example: AAPL Apple Inc 100 150.00 15000.00
         for line in lines:
             parts = line.split()
             if len(parts) >= 4:
                 try:
-                    # Look for numerical values at end: Market Value, Price, Quantity?
-                    # Or Quantity, Price, Market Value
-                    # Schwab often puts Symbol first
-
                     market_value = self._parse_decimal(parts[-1])
                     if market_value is not None:
                         price = self._parse_decimal(parts[-2])
@@ -217,7 +148,6 @@ class SchwabParser(Parser):
 
                         if quantity is not None and price is not None:
                             symbol = parts[0]
-                            # Start description from index 1 up to -3
                             description = " ".join(parts[1:-3])
 
                             if symbol.lower() not in ["symbol", "total", "account", "subtotal"]:
@@ -234,229 +164,248 @@ class SchwabParser(Parser):
 
     def _parse_transactions_from_tables(self) -> List[Transaction]:
         transactions = []
-        tx_tables = self._get_tables_by_type("transactions")
+        if not self.tables:
+            return []
 
-        for table in tx_tables:
-            # Assume header is row 0 or 1
-            start_row = 1
-            # Check for header row to map columns
-            header_row = [str(c).lower() for c in table[0]]
+        for table in self.tables:
+            # Check headers in first row
+            if not table: continue
+            headers = [str(h).lower() for h in table[0]]
 
-            # Simple Column Mapping
-            col_map = {
-                "date": -1,
-                "action": -1,
-                "symbol": -1,
-                "description": -1,
-                "quantity": -1,
-                "price": -1,
-                "amount": -1
-            }
+            # Simple heuristic for identifying Activity/Transaction tables
+            if "date" not in headers or "amount" not in headers:
+                continue
 
-            for idx, col_text in enumerate(header_row):
-                if "date" in col_text: col_map["date"] = idx
-                elif "action" in col_text: col_map["action"] = idx
-                elif "symbol" in col_text: col_map["symbol"] = idx
-                elif "description" in col_text: col_map["description"] = idx
-                elif "quantity" in col_text or "shares" in col_text: col_map["quantity"] = idx
-                elif "price" in col_text: col_map["price"] = idx
-                elif "amount" in col_text or "total" in col_text: col_map["amount"] = idx
+            try:
+                idx_date = headers.index("date")
+                idx_action = headers.index("action") if "action" in headers else -1
+                idx_amount = headers.index("amount")
+                idx_symbol = headers.index("symbol") if "symbol" in headers else -1
+                idx_desc = headers.index("description") if "description" in headers else -1
+                idx_qty = headers.index("quantity") if "quantity" in headers else -1
+                idx_price = headers.index("price") if "price" in headers else -1
+            except ValueError:
+                continue
 
-            # If map is empty or poor, try next row
-            if col_map["date"] == -1 and len(table) > 1:
-                header_row = [str(c).lower() for c in table[1]]
-                for idx, col_text in enumerate(header_row):
-                   if "date" in col_text: col_map["date"] = idx
-                   elif "action" in col_text: col_map["action"] = idx
-                   elif "symbol" in col_text: col_map["symbol"] = idx
-                   elif "description" in col_text: col_map["description"] = idx
-                   elif "quantity" in col_text or "shares" in col_text: col_map["quantity"] = idx
-                   elif "price" in col_text: col_map["price"] = idx
-                   elif "amount" in col_text or "total" in col_text: col_map["amount"] = idx
-                start_row = 2
+            for row in table[1:]:
+                # Ensure row has enough columns
+                if len(row) <= max(idx_date, idx_amount): continue
 
-            # Fallback indices if still not found
-            if col_map["date"] == -1:
-                col_map["date"] = 0
-                col_map["action"] = 1
-                col_map["symbol"] = 2
-                col_map["description"] = 3
-                col_map["amount"] = -1 # look at last column
+                try:
+                    # Clean date string if needed, existing _parse_date handles formats
+                    date_val = self._parse_date(row[idx_date])
+                    if not date_val: continue
 
-            for i in range(start_row, len(table)):
-                row = table[i]
-                if not row or len(row) < 3: continue
+                    amount = self._parse_decimal(row[idx_amount])
+                    if amount is None: continue
 
-                # Date
-                date_val = None
-                date_str = str(row[col_map["date"]]).strip() if col_map["date"] < len(row) else ""
+                    action_str = str(row[idx_action]).upper() if idx_action >= 0 else "UNKNOWN"
+                    symbol = str(row[idx_symbol]) if idx_symbol >= 0 else None
+                    desc = str(row[idx_desc]) if idx_desc >= 0 else ""
+                    qty = self._parse_decimal(row[idx_qty]) if idx_qty >= 0 else None
+                    price = self._parse_decimal(row[idx_price]) if idx_price >= 0 else None
 
-                # Try standard formats
-                date_val = self._parse_date(date_str, "%m/%d/%Y")
-                if not date_val:
-                     date_val = self._parse_date(date_str, "%m/%d/%y")
+                    # Map Type
+                    tx_type = TransactionType.OTHER
+                    if "BUY" in action_str: tx_type = TransactionType.BUY
+                    elif "SELL" in action_str: tx_type = TransactionType.SELL
+                    elif "DIVIDEND" in action_str: tx_type = TransactionType.DIVIDEND
+                    elif "INTEREST" in action_str: tx_type = TransactionType.INTEREST
+                    elif "FEE" in action_str: tx_type = TransactionType.FEE
 
-                if not date_val:
-                    continue # Not a valid transaction row (maybe subheader or footer)
-
-                # Amount
-                amount_idx = col_map["amount"]
-                if amount_idx == -1:
-                    amount_idx = len(row) - 1 # assume last
-
-                amount_str = str(row[amount_idx]).strip() if amount_idx < len(row) else ""
-                amount = self._parse_decimal(amount_str) or Decimal("0.0")
-
-                # Action / Type
-                action_idx = col_map["action"]
-                action_str = str(row[action_idx]).upper() if action_idx != -1 and action_idx < len(row) else ""
-
-                # Combine description if needed
-                desc_idx = col_map["description"]
-                desc_str = str(row[desc_idx]) if desc_idx != -1 and desc_idx < len(row) else ""
-
-                full_desc = f"{action_str} {desc_str}".strip()
-
-                # Determine Type
-                tx_type = self._determine_transaction_type(full_desc, amount)
-                if not tx_type:
-                     continue
-
-                # Symbol
-                symbol = "UNKNOWN"
-                sym_idx = col_map["symbol"]
-                if sym_idx != -1 and sym_idx < len(row):
-                     symbol = str(row[sym_idx]).strip().upper()
-
-                if not symbol or symbol == "UNKNOWN":
-                     # heuristics on description
-                     pass # keep existing symbol logic if needed or accept UNKNOWN
-
-                transactions.append(Transaction(
-                    date=date_val,
-                    type=tx_type,
-                    description=full_desc,
-                    amount=amount,
-                    symbol=symbol
-                ))
+                    transactions.append(Transaction(
+                        date=date_val,
+                        type=tx_type,
+                        description=desc,
+                        amount=amount,
+                        symbol=symbol,
+                        quantity=qty,
+                        price=price
+                    ))
+                except Exception:
+                    continue
 
         return transactions
 
-    def _determine_transaction_type(self, text: str, amount: Decimal) -> Optional[TransactionType]:
-        text = text.upper()
-        if "BUY" in text: return TransactionType.BUY
-        if "SELL" in text: return TransactionType.SELL
-        if "DIVIDEND" in text: return TransactionType.DIVIDEND
-        if "INTEREST" in text: return TransactionType.INTEREST
-        if "FEE" in text: return TransactionType.FEE
-        if "TRANSFER" in text or "JOURNAL" in text or "WIRE" in text:
-            return TransactionType.TRANSFER_OUT if amount < 0 else TransactionType.TRANSFER_IN
-        return None # or TransactionType.BUY as default? Safer to return None if unclear
-
     def _parse_transactions(self) -> List[Transaction]:
-        # 1. Try Table Extraction
+        # Try table parsing first
         table_txs = self._parse_transactions_from_tables()
         if table_txs:
-             return table_txs
+            return table_txs
 
-        # 2. Fallback to Regex (Original Logic)
         transactions = []
-        headers = ["Transaction Detail", "Investment Detail", "Account Activity"]
+
+        # Priority list of headers to look for
+        headers = ["Transaction Detail", "Activity Detail", "Investment Detail", "Account Activity"]
         lines = []
+
+        # Find the first matching section
         for header in headers:
-            found_lines = self._find_section(header, r"^Total")
+            # Look for section ending with "Total" or next header like "Investment Detail"
+            found_lines = self._find_section(header, r"^(Total|Investment Detail|Account Holdings)")
             if found_lines:
                 lines = found_lines
                 break
 
         if not lines:
+            logger.warning("No transaction section found.")
             return []
 
-        # Simple regex for date MM/DD/YY or MM/DD/YYYY
-        date_pattern = r"(\d{2}/\d{2}/\d{2,4})"
         current_date = None
+        current_description_buffer = [] # To handle multi-line descriptions if needed
+
+        # Regex Patterns
+
+        # A. Trade (Buy/Sell/Reinvest)
+        # Matches: "Bought 100 Shares AAPL @ 150.00 -15000.00"
+        # Matches: "Sell 5 Shares MSFT 750.00" (implied price or missing)
+        # Matches: "Reinvestment AAPL 0.07 Shares @ 150.00 -10.50"
+        pat_trade = re.compile(
+            r"^(?P<date>\d{2}/\d{2}/\d{2,4})\s+(?P<action>Bought|Buy|Sold|Sell|Reinvestment)\s+(?:(?P<symbol_pre>[A-Z]{1,5})\s+)?(?P<quantity>[\d,.]+)\s+(?:Shares?\s+)?(?:(?P<symbol_post>[A-Z]{1,5})\s+)?(?:@\s*(?P<price>[\d,.]+)\s+)?(?P<amount>-?[\d,]+\.\d{2}|\([\d,]+\.\d{2}\))",
+            re.IGNORECASE
+        )
+        # Note on symbol placement: "Buy 10 Shares AAPL" (symbol post) vs "Reinvestment AAPL 0.07 Shares" (symbol pre)
+
+        # B. Dividend: 01/15/23 Qualified Dividend AAPL 150.25
+        # Symbol might be implicit or in description
+        pat_div = re.compile(
+            r"^(?P<date>\d{2}/\d{2}/\d{2,4})\s+(?P<action>Qualified Dividend|Cash Dividend|Dividend Received)\s+(?P<symbol>[A-Z]{1,5})?\s*(?P<description>.*?)\s+(?P<amount>-?[\d,]+\.\d{2}|\([\d,]+\.\d{2}\))",
+            re.IGNORECASE
+        )
+
+        # C. Fees/Interest: 01/25/23 Bank Interest 4.12
+        pat_fee_int = re.compile(
+            r"^(?P<date>\d{2}/\d{2}/\d{2,4})\s+(?P<description>(?:Bank Interest|Margin Interest|Service Fee|Wire Fee).*?)\s+(?P<amount>-?[\d,]+\.\d{2}|\([\d,]+\.\d{2}\))",
+            re.IGNORECASE
+        )
+
+        # D. Transfers: 01/20/23 Wire Transfer Out -5,000.00
+        # Added "Journaled" support
+        pat_transfer = re.compile(
+            r"^(?P<date>\d{2}/\d{2}/\d{2,4})\s+(?P<description>(?:Wire Transfer|MoneyLink Transfer|Journal(?:ed)?|Transfer)\s*(?:In|Out|From|To)?.*?)\s+(?P<amount>-?[\d,]+\.\d{2}|\([\d,]+\.\d{2}\))",
+            re.IGNORECASE
+        )
+
+        # Helper date pattern for line start check
+        pat_date_start = re.compile(r"^(\d{2}/\d{2}/\d{2,4})")
+
+        last_tx = None # Keep track of last transaction to append description lines
 
         for line in lines:
-            # Check for date at start of line
-            date_match = re.search(date_pattern, line)
-            if date_match and line.strip().startswith(date_match.group(1)):
-                parsed = self._parse_date(date_match.group(1), "%m/%d/%y")
-                if not parsed:
-                    parsed = self._parse_date(date_match.group(1), "%m/%d/%Y")
-                if parsed:
-                    current_date = parsed
+            line = line.strip()
+            if not line: continue
 
-            if current_date:
-                upper_line = line.upper()
-                # Skip header lines repeating date
-                if "SETTLEMENT DATE" in upper_line:
-                   continue
+            # Check if line starts with a date -> New Transaction
+            date_match = pat_date_start.match(line)
 
-                tx_type = None
+            if date_match:
+                # Parse Date
+                date_str = date_match.group(1)
+                date_val = self._parse_date(date_str, "%m/%d/%y") or self._parse_date(date_str, "%m/%d/%Y")
 
-                if "BUY" in upper_line or "BOUGHT" in upper_line:
-                    tx_type = TransactionType.BUY
-                elif "SELL" in upper_line or "SOLD" in upper_line:
-                    tx_type = TransactionType.SELL
-                elif "REINVEST" in upper_line:
-                    tx_type = TransactionType.BUY
-                elif "DIVIDEND" in upper_line:
-                    tx_type = TransactionType.DIVIDEND
-                elif "INTEREST" in upper_line:
-                     tx_type = TransactionType.INTEREST
-                elif "FEE" in upper_line:
-                     tx_type = TransactionType.FEE
-                elif "TRANSFER" in upper_line or "JOURNALED" in upper_line or "WIRE" in upper_line:
-                     # Check direction keywords
-                     if "IN" in upper_line:
-                         tx_type = TransactionType.TRANSFER_IN
-                     elif "OUT" in upper_line:
-                         tx_type = TransactionType.TRANSFER_OUT
-                     else:
-                         # Fallback to amount check later, or default
-                         tx_type = TransactionType.TRANSFER_IN # Default temporary
+                if not date_val:
+                    logger.warning(f"Invalid date format in line: {line}")
+                    continue
 
-                if tx_type:
-                    # Amount Logic
-                    parts = line.split()
-                    amount = Decimal("0.0")
-                    for part in reversed(parts):
-                        val = self._parse_decimal(part)
-                        if val is not None:
-                            amount = val
-                            break
+                tx = None
 
-                    # Refine Transfer type using amount if not already determined by keywords
-                    if (tx_type == TransactionType.TRANSFER_IN or tx_type == TransactionType.TRANSFER_OUT):
-                         if "IN" not in upper_line and "OUT" not in upper_line:
-                             if amount < 0:
-                                 tx_type = TransactionType.TRANSFER_OUT
-                             else:
-                                 tx_type = TransactionType.TRANSFER_IN
+                # Try Matching Patterns
 
-                    # Symbol Extraction
-                    symbol = "UNKNOWN"
-
-                    # 1. Look for (TICKER)
-                    paren_match = re.search(r"\(([A-Z]{1,5})\)", line)
-                    if paren_match:
-                        symbol = paren_match.group(1)
+                # 1. Trade (Buy/Sell/Reinvest)
+                m_trade = pat_trade.search(line)
+                if m_trade:
+                    action = m_trade.group("action").upper()
+                    if "BUY" in action or "BOUGHT" in action or "REINVEST" in action:
+                        tx_type = TransactionType.BUY
                     else:
-                        # 2. Heuristic: Look for all-caps word that isn't a keyword
-                        # Schwab often has: "Buy 100 Shares AAPL ..."
-                        # Or "Dividend AAPL ..."
-                        cleaned_parts = [p.strip() for p in parts]
-                        for p in cleaned_parts:
-                            if re.match(r"^[A-Z]{3,5}$", p) and p not in ["BUY", "SELL", "DATE", "CORP", "INC", "FUND", "CASH", "VISA", "WIRE", "FEES"]:
-                                symbol = p
-                                break
+                        tx_type = TransactionType.SELL
 
-                    transactions.append(Transaction(
-                        date=current_date,
+                    symbol = m_trade.group("symbol_pre") or m_trade.group("symbol_post")
+                    quantity = self._parse_decimal(m_trade.group("quantity"))
+                    price = self._parse_decimal(m_trade.group("price"))
+                    amount = self._parse_decimal(m_trade.group("amount"))
+
+                    tx = Transaction(
+                        date=date_val,
                         type=tx_type,
-                        description=line.strip(),
+                        description=line,
                         amount=amount,
-                        symbol=symbol
-                    ))
+                        symbol=symbol,
+                        quantity=quantity,
+                        price=price
+                    )
+
+                # 2. Dividend
+                if not tx:
+                    m_div = pat_div.search(line)
+                    if m_div:
+                        symbol = m_div.group("symbol")
+                        desc_part = m_div.group("description")
+                        amount = self._parse_decimal(m_div.group("amount"))
+
+                        # If symbol not captured directly, look in description or fallback
+                        if not symbol:
+                            # Try finding ticker in description if missing
+                            # Simple heuristic: look for last word if it's ALL CAPS?
+                            # Or just leave None if ambiguous.
+                            # For "Qualified Dividend AAPL", regex catches AAPL as symbol.
+                            pass
+
+                        tx = Transaction(
+                            date=date_val,
+                            type=TransactionType.DIVIDEND,
+                            description=line,
+                            amount=amount,
+                            symbol=symbol
+                        )
+
+                # 3. Fees / Interest
+                if not tx:
+                    m_fee = pat_fee_int.search(line)
+                    if m_fee:
+                        desc = m_fee.group("description")
+                        amount = self._parse_decimal(m_fee.group("amount"))
+
+                        tx_type = TransactionType.INTEREST if "INTEREST" in desc.upper() else TransactionType.FEE
+
+                        tx = Transaction(
+                            date=date_val,
+                            type=tx_type,
+                            description=line,
+                            amount=amount
+                        )
+
+                # 4. Transfers
+                if not tx:
+                    m_trans = pat_transfer.search(line)
+                    if m_trans:
+                        desc = m_trans.group("description")
+                        amount = self._parse_decimal(m_trans.group("amount"))
+
+                        # Classification
+                        is_out = (amount and amount < 0) or "OUT" in desc.upper() or "TO" in desc.upper()
+                        tx_type = TransactionType.TRANSFER_OUT if is_out else TransactionType.TRANSFER_IN
+
+                        tx = Transaction(
+                            date=date_val,
+                            type=tx_type,
+                            description=line,
+                            amount=amount
+                        )
+
+                if tx:
+                    transactions.append(tx)
+                    last_tx = tx
+                else:
+                    logger.warning(f"Unmatched transaction line: {line}")
+
+            else:
+                # Line does NOT start with date -> Wrapped Description or Junk
+                if last_tx:
+                    # Append to previous description
+                    last_tx.description += " " + line
+                else:
+                    # Ignore junk lines before first transaction
+                    pass
 
         return transactions

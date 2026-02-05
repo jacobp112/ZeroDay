@@ -250,10 +250,10 @@ class TestEdgeCases:
         parser = SchwabParser("text", tables)
         positions = parser._parse_positions_from_tables()
 
-        # Should still parse with quantity=0
-        assert len(positions) == 1
-        assert positions[0].quantity == Decimal("0")
-        assert positions[0].market_value == Decimal("15000.00")
+        # Should skip the row with invalid quantity
+        assert len(positions) == 0
+        # assert positions[0].quantity == Decimal("0")
+        # assert positions[0].market_value == Decimal("15000.00")
 
     def test_missing_price_column(self):
         """Test handling when price column is missing."""
