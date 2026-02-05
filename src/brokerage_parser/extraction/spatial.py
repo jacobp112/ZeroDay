@@ -8,7 +8,7 @@ def find_value_in_region(
     region_filter: callable,
     value_pattern: str
 ) -> Optional[SourceReference]:
-    """
+    r"""
     Search for a regex pattern within a spatially defined region of the page.
 
     Args:
