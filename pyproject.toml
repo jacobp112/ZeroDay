@@ -11,6 +11,9 @@ python = "^3.11"
 click = "^8.1.7"
 pymupdf = "^1.23.0"          # Native PDF extraction (Fast, fitz)
 pillow = "^10.2.0"           # Image processing
+fastapi = "^0.109.0"         # REST API framework
+uvicorn = {extras = ["standard"], version = "^0.27.0"}  # ASGI server
+python-multipart = "^0.0.9"  # For file uploads
 pandas = "^2.2.0"            # Data handling
 pydantic = "^2.6.0"          # Validation
 tqdm = "^4.66.0"             # Progress bars
