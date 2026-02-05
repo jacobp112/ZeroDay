@@ -3,6 +3,7 @@ from unittest.mock import patch, MagicMock
 from decimal import Decimal
 from brokerage_parser.orchestrator import process_statement
 from brokerage_parser.models import ParsedStatement
+from brokerage_parser.reporting.models import ClientReport
 
 @patch("brokerage_parser.orchestrator.extract_text_with_layout")
 @patch("brokerage_parser.orchestrator.detect_broker")
@@ -11,9 +12,6 @@ def test_process_statement_success(mock_get_parser, mock_detect, mock_extract, t
     # Setup Mocks
     mock_pdf = tmp_path / "dummy.pdf"
     mock_pdf.touch()
-
-    # Create dummy pdf content so PyMuPDF doesn't error out even if mocked (good practice)
-    # But since we are mocking extract_text_with_layout, the file content doesn't matter much for that call
 
     mock_extract.return_value = {1: "Schwab Header\nTransaction Detail\n..."}
     mock_detect.return_value = ("schwab", 0.9)
@@ -32,9 +30,10 @@ def test_process_statement_success(mock_get_parser, mock_detect, mock_extract, t
     # Execute
     result = process_statement(str(mock_pdf))
 
-    # Verify
-    assert result.broker == "Schwab"
-    assert result.account.account_number == "123"
+    # Verify - result is now ClientReport
+    assert isinstance(result, ClientReport)
+    assert result.source_statement.broker == "Schwab"
+    assert result.metadata.account_number == "123"
     mock_extract.assert_called_once()
     mock_detect.assert_called_once()
     mock_get_parser.assert_called_once()
@@ -52,8 +51,10 @@ def test_process_statement_unknown_broker(mock_detect, mock_extract, tmp_path):
 
     result = process_statement(str(mock_pdf))
 
-    assert result.broker == "Unknown"
-    assert "Could not detect broker and no usable tables found." in result.parse_errors
+    # Should return a ClientReport with errors in source_statement
+    assert isinstance(result, ClientReport)
+    assert result.source_statement.broker == "Unknown"
+    assert "Could not detect broker and no usable tables found." in result.source_statement.parse_errors
 
 def test_process_statement_file_not_found():
     with pytest.raises(ValueError):

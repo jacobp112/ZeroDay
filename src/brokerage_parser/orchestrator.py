@@ -91,7 +91,11 @@ def process_statement(pdf_path: str) -> ClientReport:
             logger.error(f"No parser implementation found for: {broker_name}")
             stmt = ParsedStatement(broker=broker_name, tax_wrapper=tax_wrapper)
             stmt.parse_errors.append(f"No parser available for broker: {broker_name}")
-        return stmt
+
+        # Still generate a report wrapper for consistent API
+        from brokerage_parser.reporting.engine import ReportingEngine
+        reporting_engine = ReportingEngine()
+        return reporting_engine.generate_report(stmt)
 
     # 4. Parse
     try:
