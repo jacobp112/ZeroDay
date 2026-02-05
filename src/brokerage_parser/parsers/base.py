@@ -92,7 +92,7 @@ class Parser(ABC):
              # If end pattern not found, take reasonably large chunk or rest of text
              end_idx = len(remaining_text)
         else:
-             end_idx = remaining_text.find(end_match.group(0))
+             end_idx = end_match.start()
 
         section_text = remaining_text[:end_idx]
         return [line.strip() for line in section_text.split('\n') if line.strip()]
