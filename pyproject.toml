@@ -1,0 +1,36 @@
+[tool.poetry]
+name = "brokerage-statement-parser"
+version = "0.1.0"
+description = "A lightweight local CLI tool to extract transaction data from brokerage PDFs."
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "brokerage_parser", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+click = "^8.1.7"
+pymupdf = "^1.23.0"          # Native PDF extraction (Fast, fitz)
+pillow = "^10.2.0"           # Image processing
+pandas = "^2.2.0"            # Data handling
+pydantic = "^2.6.0"          # Validation
+tqdm = "^4.66.0"             # Progress bars
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+black = "^24.1.0"
+mypy = "^1.8.0"
+ruff = "^0.2.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
+
+[tool.poetry.scripts]
+brokerage-parser = "brokerage_parser.cli:main"
