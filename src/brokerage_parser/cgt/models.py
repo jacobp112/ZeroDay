@@ -42,6 +42,8 @@ class CGTReport:
     total_gains: Decimal = Decimal("0.00")
     total_losses: Decimal = Decimal("0.00")
     net_gain: Decimal = Decimal("0.00")
+    total_proceeds: Decimal = Decimal("0.00")
+    total_allowable_costs: Decimal = Decimal("0.00")
     match_events: List[MatchEvent] = field(default_factory=list)
 
     def add_event(self, event: MatchEvent):
@@ -52,6 +54,8 @@ class CGTReport:
             self.total_losses += event.gain_gbp # This will be negative
 
         self.net_gain += event.gain_gbp
+        self.total_proceeds += event.proceeds
+        self.total_allowable_costs += event.allowable_cost
 
     def to_dict(self):
         return {
@@ -59,5 +63,7 @@ class CGTReport:
             "total_gains": str(self.total_gains),
             "total_losses": str(self.total_losses),
             "net_gain": str(self.net_gain),
+            "total_proceeds": str(self.total_proceeds),
+            "total_allowable_costs": str(self.total_allowable_costs),
             "match_events": [e.to_dict() for e in self.match_events]
         }

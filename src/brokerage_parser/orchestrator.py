@@ -5,10 +5,11 @@ from brokerage_parser.extraction import extract_text, extract_tables, extract_te
 from brokerage_parser.detection import detect_broker
 from brokerage_parser.parsers import get_parser
 from brokerage_parser.models import ParsedStatement
+from brokerage_parser.reporting.models import ClientReport
 
 logger = logging.getLogger(__name__)
 
-def process_statement(pdf_path: str) -> ParsedStatement:
+def process_statement(pdf_path: str) -> ClientReport:
     """
     Main orchestration function to process a brokerage statement PDF.
 
@@ -66,6 +67,17 @@ def process_statement(pdf_path: str) -> ParsedStatement:
     broker_name, confidence = detect_broker(full_text)
     logger.info(f"Detected Broker: {broker_name} (Confidence: {confidence:.2f})")
 
+    # 2b. Tax Wrapper Detection
+    from brokerage_parser.tax.detection import TaxWrapperDetector
+    from brokerage_parser.models import TaxWrapper
+
+    try:
+        tax_wrapper = TaxWrapperDetector.detect(full_text, broker_name)
+        logger.info(f"Detected Tax Wrapper: {tax_wrapper.value}")
+    except Exception as e:
+        logger.warning(f"Tax wrapper detection failed: {e}. Defaulting to UNKNOWN.")
+        tax_wrapper = TaxWrapper.UNKNOWN
+
     # 3. Get Parser
     # Pass the flattened list of tables
     # Note: get_parser now returns GenericParser for unknown brokers if tables exist
@@ -73,11 +85,11 @@ def process_statement(pdf_path: str) -> ParsedStatement:
     if not parser:
         if broker_name == "unknown":
             logger.warning("Unknown broker and no tables available for generic parsing.")
-            stmt = ParsedStatement(broker="Unknown")
+            stmt = ParsedStatement(broker="Unknown", tax_wrapper=tax_wrapper)
             stmt.parse_errors.append("Could not detect broker and no usable tables found.")
         else:
             logger.error(f"No parser implementation found for: {broker_name}")
-            stmt = ParsedStatement(broker=broker_name)
+            stmt = ParsedStatement(broker=broker_name, tax_wrapper=tax_wrapper)
             stmt.parse_errors.append(f"No parser available for broker: {broker_name}")
         return stmt
 
@@ -85,10 +97,29 @@ def process_statement(pdf_path: str) -> ParsedStatement:
     try:
         logger.info(f"Parsing with {parser.__class__.__name__}...")
         statement = parser.parse()
+        # Set the detected tax wrapper on the statement
+        statement.tax_wrapper = tax_wrapper
         statement.validate()
-        return statement
+
+        # 5. Reporting
+        from brokerage_parser.reporting.engine import ReportingEngine
+        from brokerage_parser.reporting.models import ClientReport
+
+        logger.info("Generating Client Report...")
+        reporting_engine = ReportingEngine()
+        report = reporting_engine.generate_report(statement)
+
+        return report
+
     except Exception as e:
-        logger.error(f"Parsing error: {e}")
-        stmt = ParsedStatement(broker=broker_name)
-        stmt.parse_errors.append(f"Parsing exception: {str(e)}")
-        return stmt
+        logger.error(f"Processing error: {e}")
+        # If parsing failed completely, we can't really generate a report easily.
+        # But we need to conform to return type.
+        # If we have a partial statement, we could try?
+        # But here we are in the catch block where likely `parser.parse()` failed.
+        # Rethrowing might be best, or returning a dummy error report.
+        # For now, let's re-raise or handle gracefully if we want to return a ParseError object.
+        # The original code returned a ParsedStatement with errors.
+        # We should probably propagate that if possible, but the signature changes.
+        raise e
+
