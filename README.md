@@ -1,5 +1,7 @@
 # Brokerage Statement Parser (MVP)
 
+[![CI](https://github.com/jacobp112/ZeroDay/actions/workflows/ci.yml/badge.svg)](https://github.com/jacobp112/ZeroDay/actions/workflows/ci.yml)
+
 A local CLI tool to extract transaction data from brokerage statements (PDF) using pure Python.
 Designed for student/lightweight environments without admin rights (no Tesseract/Poppler required).
 
