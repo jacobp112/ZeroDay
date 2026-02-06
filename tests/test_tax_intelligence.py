@@ -3,7 +3,8 @@ from decimal import Decimal
 from brokerage_parser.tax.detection import TaxWrapperDetector
 from brokerage_parser.tax.allowances import AllowanceTracker
 from brokerage_parser.tax.planning import identify_bed_and_isa_opportunity
-from brokerage_parser.models import TaxWrapper, Position
+from brokerage_parser.models import TaxWrapper
+from brokerage_parser.models.domain import Position
 
 class TestTaxWrapperDetector:
 

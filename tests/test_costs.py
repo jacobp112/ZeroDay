@@ -1,7 +1,8 @@
 from decimal import Decimal
 from datetime import date
 import pytest
-from brokerage_parser.models import Transaction, TransactionType
+from brokerage_parser.models import TransactionType
+from brokerage_parser.models.domain import Transaction
 from brokerage_parser.costs.engine import CostAnalysisEngine
 from brokerage_parser.costs.models import CostCategory
 

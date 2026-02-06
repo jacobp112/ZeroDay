@@ -4,16 +4,17 @@ import urllib.request
 import urllib.error
 from typing import Optional, Dict, Any
 
-from brokerage_parser.config import config
+from brokerage_parser.config import settings
 
 logger = logging.getLogger(__name__)
 
 class LLMClient:
     def __init__(self):
-        self.base_url = config.LLM_BASE_URL
-        self.api_key = config.LLM_API_KEY
-        self.model = config.LLM_MODEL
-        self.enabled = config.LLM_ENABLED
+        self.base_url = settings.LLM_BASE_URL
+        self.api_key = settings.LLM_API_KEY
+        self.model = settings.LLM_MODEL
+        self.enabled = settings.LLM_ENABLED
+
 
     def complete(self, prompt: str, json_schema: Optional[Dict] = None) -> str:
         """

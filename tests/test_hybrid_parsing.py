@@ -6,7 +6,8 @@ import os
 
 from brokerage_parser.parsers.schwab import SchwabParser
 from brokerage_parser.extraction import RichPage, BoundingBox
-from brokerage_parser.models import ExtractionMethod, SourceReference
+from brokerage_parser.models import ExtractionMethod
+from brokerage_parser.models.domain import SourceReference
 
 class TestHybridParsing(unittest.TestCase):
 

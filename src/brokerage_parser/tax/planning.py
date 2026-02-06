@@ -1,6 +1,6 @@
 from decimal import Decimal
 from typing import List, Optional, Dict, Any
-from brokerage_parser.models import Position
+from brokerage_parser.models.domain import Position
 from brokerage_parser.tax.allowances import AllowanceTracker
 
 def identify_bed_and_isa_opportunity(

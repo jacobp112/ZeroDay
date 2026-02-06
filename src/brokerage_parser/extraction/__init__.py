@@ -5,7 +5,8 @@ import logging
 import io
 from dataclasses import dataclass
 
-from brokerage_parser.models import BoundingBox, SourceReference, ExtractionMethod
+from brokerage_parser.models import ExtractionMethod
+from brokerage_parser.models.domain import BoundingBox, SourceReference
 
 # ... existing imports ...
 

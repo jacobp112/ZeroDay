@@ -1,8 +1,9 @@
 from datetime import date
 from decimal import Decimal
 import pytest
-from brokerage_parser.models import (
-    Transaction, TransactionType, Position, ParsedStatement,
+from brokerage_parser.models import TransactionType
+from brokerage_parser.models.domain import (
+    Transaction, Position, ParsedStatement,
     TaxWrapper, CorporateAction, CorporateActionType, TaxLot,
     validate_isin, validate_sedol, validate_currency, generate_transaction_id
 )

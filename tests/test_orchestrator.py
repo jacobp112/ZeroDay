@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 from decimal import Decimal
 from brokerage_parser.orchestrator import process_statement
-from brokerage_parser.models import ParsedStatement
+from brokerage_parser.models.domain import ParsedStatement
 
 @patch("brokerage_parser.orchestrator.extract_rich_text")
 @patch("brokerage_parser.orchestrator.extract_tables")

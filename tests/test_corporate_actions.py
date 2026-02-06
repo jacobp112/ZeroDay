@@ -1,7 +1,8 @@
 from decimal import Decimal
 from datetime import date
 import pytest
-from brokerage_parser.models import Transaction, TransactionType, CorporateAction, CorporateActionType
+from brokerage_parser.models import TransactionType, CorporateActionType
+from brokerage_parser.models.domain import Transaction, CorporateAction
 from brokerage_parser.cgt.engine import CGTEngine
 from brokerage_parser.cgt.models import MatchType
 

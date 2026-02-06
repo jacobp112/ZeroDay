@@ -4,7 +4,8 @@ import logging
 from brokerage_parser.extraction import extract_text, extract_tables, extract_text_with_layout, text_to_implicit_table, extract_rich_text, RichTable
 from brokerage_parser.detection import detect_broker
 from brokerage_parser.parsers import get_parser
-from brokerage_parser.models import ParsedStatement, TaxWrapper
+from brokerage_parser.models import TaxWrapper
+from brokerage_parser.models.domain import ParsedStatement
 
 logger = logging.getLogger(__name__)
 

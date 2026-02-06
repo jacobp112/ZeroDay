@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import List, Dict, Optional, Any
 from datetime import date
 
-from brokerage_parser.models import ParsedStatement, Position
+from brokerage_parser.models.domain import ParsedStatement, Position
 from brokerage_parser.cgt.models import CGTReport
 from brokerage_parser.costs.models import CostReport
 

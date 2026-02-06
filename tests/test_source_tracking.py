@@ -2,7 +2,8 @@ import pytest
 from unittest.mock import MagicMock, patch
 from datetime import date
 from decimal import Decimal
-from brokerage_parser.models import BoundingBox, SourceReference, ExtractionMethod
+from brokerage_parser.models import ExtractionMethod
+from brokerage_parser.models.domain import BoundingBox, SourceReference
 from brokerage_parser.extraction import RichPage
 from brokerage_parser.parsers.schwab import SchwabParser
 

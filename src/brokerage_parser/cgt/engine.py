@@ -4,7 +4,8 @@ from datetime import timedelta
 from dataclasses import dataclass
 import copy
 
-from brokerage_parser.models import Transaction, TransactionType, TaxWrapper, CorporateAction, CorporateActionType
+from brokerage_parser.models import TransactionType, TaxWrapper, CorporateActionType
+from brokerage_parser.models.domain import Transaction, CorporateAction
 from brokerage_parser.cgt.models import MatchEvent, MatchType, CGTReport
 from brokerage_parser.cgt.pool import Section104Pool
 

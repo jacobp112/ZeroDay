@@ -1,6 +1,6 @@
 import pytest
 from brokerage_parser.parsers.schwab import SchwabParser, TransactionType
-from brokerage_parser.models import Transaction
+from brokerage_parser.models.domain import Transaction
 
 def test_schwab_parse_transactions_from_tables():
     # Mock table data mimicking PyMuPDF output

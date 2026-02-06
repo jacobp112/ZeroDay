@@ -2,7 +2,8 @@ from typing import List, Optional
 from datetime import date
 from decimal import Decimal
 from brokerage_parser.parsers.base import Parser
-from brokerage_parser.models import Transaction, Position, TransactionType
+from brokerage_parser.models import TransactionType
+from brokerage_parser.models.domain import Transaction, Position
 import re
 
 class FidelityParser(Parser):

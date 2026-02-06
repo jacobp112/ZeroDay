@@ -1,6 +1,7 @@
 import re
 from typing import Optional
-from brokerage_parser.models import BoundingBox, SourceReference, ExtractionMethod
+from brokerage_parser.models import ExtractionMethod
+from brokerage_parser.models.domain import BoundingBox, SourceReference
 from brokerage_parser.extraction import RichPage
 
 def find_value_in_region(

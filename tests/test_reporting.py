@@ -1,8 +1,13 @@
 import pytest
 from decimal import Decimal
 from datetime import date
-from brokerage_parser.models import (
-    ParsedStatement, Position, Transaction, TransactionType, TaxWrapper, AccountSummary
+from brokerage_parser.models import TaxWrapper, TransactionType
+from brokerage_parser.models.domain import (
+    ParsedStatement,
+    Position,
+    Transaction,
+    AccountSummary,
+    CorporateAction
 )
 from brokerage_parser.reporting.engine import ReportingEngine
 from brokerage_parser.reporting.renderers import MarkdownRenderer

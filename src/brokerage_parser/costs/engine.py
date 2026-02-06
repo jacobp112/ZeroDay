@@ -1,7 +1,8 @@
 import re
 from typing import List
 from decimal import Decimal
-from brokerage_parser.models import Transaction, TransactionType
+from brokerage_parser.models import TransactionType
+from brokerage_parser.models.domain import Transaction
 from brokerage_parser.costs.models import CostReport, CostItem, CostCategory
 
 class CostAnalysisEngine:

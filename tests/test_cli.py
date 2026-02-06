@@ -19,7 +19,7 @@ from brokerage_parser.cli import (
     start_frontend,
     GLOBAL_SETTINGS
 )
-from brokerage_parser.models import ParsedStatement
+from brokerage_parser.models.domain import ParsedStatement
 
 
 class TestFindPdfFiles:

@@ -2,7 +2,8 @@
 import pytest
 from decimal import Decimal
 from datetime import date
-from brokerage_parser.models import ParsedStatement, Transaction, Position, AccountSummary, TransactionType
+from brokerage_parser.models import TransactionType
+from brokerage_parser.models.domain import ParsedStatement, Transaction, Position, AccountSummary
 
 def create_statement(
     transactions=None,

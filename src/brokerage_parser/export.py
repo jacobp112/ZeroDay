@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from typing import Dict, Any
-from brokerage_parser.models import ParsedStatement
+from brokerage_parser.models.domain import ParsedStatement
 
 def to_json(statement: ParsedStatement, path: str) -> None:
     """

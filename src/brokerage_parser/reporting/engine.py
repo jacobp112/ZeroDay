@@ -2,7 +2,8 @@ from decimal import Decimal
 from typing import Optional
 from datetime import date
 
-from brokerage_parser.models import ParsedStatement, TaxWrapper, TransactionType
+from brokerage_parser.models import TaxWrapper, TransactionType
+from brokerage_parser.models.domain import ParsedStatement
 from brokerage_parser.cgt.engine import CGTEngine
 from brokerage_parser.costs.engine import CostAnalysisEngine
 from brokerage_parser.tax.allowances import AllowanceTracker

@@ -5,7 +5,8 @@ from decimal import Decimal
 import logging
 
 from brokerage_parser.parsers.base import Parser
-from brokerage_parser.models import Transaction, Position, TransactionType
+from brokerage_parser.models import TransactionType
+from brokerage_parser.models.domain import Transaction, Position
 
 logger = logging.getLogger(__name__)
 

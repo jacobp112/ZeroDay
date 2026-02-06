@@ -2,7 +2,8 @@ from typing import List, Optional, Dict, Tuple
 from datetime import date
 from decimal import Decimal
 from brokerage_parser.parsers.base import Parser
-from brokerage_parser.models import Transaction, Position, TransactionType, AccountSummary
+from brokerage_parser.models import TransactionType
+from brokerage_parser.models.domain import Transaction, Position, AccountSummary
 import re
 import logging
 
@@ -10,9 +11,10 @@ logger = logging.getLogger(__name__)
 
 from brokerage_parser.llm.client import LLMClient
 from brokerage_parser.extraction.spatial import find_value_in_region, find_text_in_page, top_right_region
-from brokerage_parser.models import ExtractionMethod, SourceReference, ParsedStatement
+from brokerage_parser.models import ExtractionMethod
+from brokerage_parser.models.domain import SourceReference, ParsedStatement
 from brokerage_parser.extraction import RichPage, RichTable, TableData
-from brokerage_parser.config import config
+from brokerage_parser.config import settings
 
 
 

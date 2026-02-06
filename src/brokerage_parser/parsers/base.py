@@ -4,7 +4,8 @@ from datetime import date, datetime
 import re
 from typing import List, Optional, Pattern, Dict, Tuple, Any, Union
 import logging
-from brokerage_parser.models import ParsedStatement, Transaction, Position, AccountSummary, SourceReference, ExtractionMethod, BoundingBox
+from brokerage_parser.models import ExtractionMethod
+from brokerage_parser.models.domain import ParsedStatement, Transaction, Position, AccountSummary, SourceReference, BoundingBox
 from brokerage_parser.extraction import TableData, RichPage, RichTable
 
 logger = logging.getLogger(__name__)
