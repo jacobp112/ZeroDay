@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     # App & Security
     ENV: str = "development"
     API_KEY_SALT: str = Field(..., description="Salt for hashing API keys")
+    ADMIN_JWT_SECRET: str = Field(..., description="Secret key for Admin JWT signing")
+    PORTAL_JWT_SECRET: Optional[str] = Field(None, description="Secret key for Portal JWT signing")
     MAX_FILE_SIZE: int = 20 * 1024 * 1024  # 20MB
 
     # Storage

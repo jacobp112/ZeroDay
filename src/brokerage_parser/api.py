@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, File, UploadFile, Depends, Header, HTTPException, status, Query, Request
+from fastapi import FastAPI, File, UploadFile, Depends, Header, HTTPException, status, Query, Request, Security
 from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security.api_key import APIKeyHeader
@@ -23,7 +23,12 @@ from brokerage_parser.models import Job, JobStatus
 from brokerage_parser.config import settings
 from brokerage_parser.worker import process_statement_task
 from brokerage_parser.core.middleware import TenantContextMiddleware
-from brokerage_parser.api import admin
+from brokerage_parser.monitoring.metrics import PrometheusMiddleware
+from brokerage_parser.core.middleware import TenantContextMiddleware
+# from brokerage_parser.routers import admin # Admin CRUD not ready yet
+from brokerage_parser.auth import admin as auth_admin
+from brokerage_parser.auth import portal as auth_portal
+from brokerage_parser.routers import portal as api_portal
 
 
 logger = logging.getLogger("api")
@@ -68,7 +73,11 @@ class ErrorResponse(BaseModel):
 
 # App
 app = FastAPI(title="ParseFin Enterprise API", version="2.0.0")
-app.include_router(admin.router)
+from brokerage_parser.routers.admin import router as admin_router
+app.include_router(admin_router)
+app.include_router(auth_admin.router)
+app.include_router(auth_portal.router)
+app.include_router(api_portal.router)
 
 
 # Prometheus Metrics
@@ -86,6 +95,7 @@ app.add_middleware(
 
 # Tenant Context
 app.add_middleware(TenantContextMiddleware)
+app.add_middleware(PrometheusMiddleware)
 
 # Dependency Override for Tenant Context
 def get_db(request: Request):
@@ -100,12 +110,12 @@ def get_db(request: Request):
              # SQLAlchemy's params for TEXT might not work with SET syntax directly in all drivers
              # Safer: db.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": ...})
              db.execute(
-                 text("SET LOCAL app.current_tenant_id = :tid"),
-                 {"tid": request.state.tenant_id}
+                 text("SELECT set_config('app.current_tenant_id', :tid, true)"),
+                 {"tid": str(request.state.tenant_id)}
              )
              db.execute(
-                 text("SET LOCAL app.current_organization_id = :oid"),
-                 {"oid": request.state.org_id}
+                 text("SELECT set_config('app.current_organization_id', :oid, true)"),
+                 {"oid": str(request.state.org_id)}
              )
         yield db
     finally:

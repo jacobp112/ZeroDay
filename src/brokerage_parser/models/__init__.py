@@ -1,5 +1,6 @@
 from .types import JobStatus, TaxWrapper, CorporateActionType, TransactionType, ExtractionMethod
 from .tenant import Organization, Tenant, ApiKey, AdminAuditLog
+from .admin import AdminUser
 from .job import Job
 from .document import Document
 from .accounting import Account, Holding, Transaction

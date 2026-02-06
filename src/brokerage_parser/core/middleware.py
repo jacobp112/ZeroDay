@@ -11,7 +11,12 @@ from brokerage_parser.config import settings
 class TenantContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Allow health check and open endpoints
-        if request.url.path in ["/health", "/metrics", "/docs", "/openapi.json"]:
+        path = request.url.path
+        if any(path.startswith(p) for p in ["/health", "/metrics", "/docs", "/openapi.json"]):
+            return await call_next(request)
+
+        # Skip for Admin and Portal APIs (they handle their own auth)
+        if request.url.path.startswith("/admin") or request.url.path.startswith("/portal"):
             return await call_next(request)
 
         # 1. Extract API Key
