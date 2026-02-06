@@ -1,100 +1,77 @@
 # ParseFin Enterprise API
 
-A scalable, secure, multi-tenant brokerage statement parsing system with async job processing.
+A secure, multi-tenant brokerage statement parsing platform featuring administrative control, customer self-service, and comprehensive monitoring infrastructure.
 
-## 🚀 Key Features
+## Core Features
 
-- **Multi-Tenancy**: Database-enforced isolation (Row-Level Security) for strict data segregation.
-- **Async Processing**: Scalable Celery workers for handling large PDF parsing jobs.
-- **Enterprise Security**: Bcrypt API key hashing, Immutable Audit Logs, and Tenant Context injection.
-- **Parsing Engine**: Hybrid extraction using Regex, Spatial Analysis, and LLM fallbacks.
+- **Multi-Tenancy**: Data isolation enforced via PostgreSQL Row-Level Security (RLS) for absolute segregation of tenant data.
+- **Administrative Control Plane**: Centralized management of organizations, tenants, and API keys with mandatory audit logging for all state-changing operations.
+- **Customer Self-Service Portal**: Scoped interface for tenants to manage their own API keys, view usage metrics, and monitor job statuses.
+- **Enterprise Security**: Standardized Bcrypt hashing for API keys, secure JWT-scoped authentication, and automated audit trails.
+- **Monitoring and Observability**: Deep integration with Prometheus and Grafana for real-time telemetry on system performance and per-tenant activity.
+- **Parsing Engine**: Tiered extraction logic combining Regex, spatial analysis, and LLM-assisted verification.
 
-## 📚 Documentation
+## Documentation Links
 
-Detailed guides for operations and security:
+For detailed operational and design specifications, refer to the following documents:
 
-- [Migration Guide](docs/MIGRATION_GUIDE.md): Upgrading to Multi-Tenancy.
-- [Tenant Management](docs/TENANT_MANAGEMENT.md): Onboarding customers and rotating keys.
-- [Security Architecture](docs/SECURITY_ARCHITECTURE.md): Deep dive into RLS and Threat Models.
+- [Security Architecture](docs/SECURITY_ARCHITECTURE.md): Technical overview of RLS implementation and threat modeling.
+- [Tenant Management Guide](docs/TENANT_MANAGEMENT.md): Procedures for organization onboarding and key rotation.
+- [Phase 1 Walkthrough](C:/Users/c23052656/.gemini/antigravity/brain/7c60da5a-5d0a-4f37-b082-7eb7ee6a7e4f/walkthrough.md): Detailed verification results and implementation status.
 
-## 🛠️ Architecture
+## Technical Stack
 
-- **API**: FastAPI (Async/Await) with `TenantContextMiddleware`
-- **Worker**: Celery (Distributed Processing)
-- **Broker**: Redis
-- **Database**: PostgreSQL 15+ (RLS Enabled)
-- **Storage**: S3 / MinIO (PDFs & JSON Reports)
+- **Application Layer**: FastAPI (Async/Await) with SQLAlchemy 2.0 ORM.
+- **Data Persistence**: PostgreSQL 15+ with native RLS support.
+- **Distributed Processing**: Celery workers with Redis as the message broker.
+- **Monitoring**: Prometheus (Metrics collection) and Grafana (Visualization).
+- **Frontend Infrastructure**: React (Vite-based) for both Admin and Customer portals.
 
-## ⚡ Quick Start (Docker)
+## Quick Start (Local Deployment)
 
-### 1. Start the Stack
+### 1. Environment Configuration
+Copy the template and configure the required environment variables:
+```bash
+cp .env.example .env
+```
+
+### 2. Infrastructure Initialization
+Deploy the core services using Docker:
 ```bash
 docker-compose up -d --build
 ```
-Ensure `.env` matches your environment (see `.env.example`).
 
-### 2. Run Database Migrations
-Initialize schema and enable RLS policies:
+### 3. Database Schema Provisioning
+Apply Alembic migrations to initialize the schema and RLS policies:
 ```bash
 docker-compose exec api alembic upgrade head
 ```
-*Note: For production migration of existing data, see [Migration Guide](docs/MIGRATION_GUIDE.md).*
 
-### 3. Create a Tenant (Admin)
-Since RLS is enabled, you must create a tenant to generate an API key.
+### 4. Administrative Onboarding
+Bootstrap the initial administrative user and provision the first organization:
 ```bash
-# 1. Create Organization
-curl -X POST http://localhost:8000/admin/organizations \
-  -H "X-API-Key: <ADMIN_KEY>" \
-  -d '{"name": "Demo Corp", "slug": "demo"}'
-
-# 2. Create Tenant
-curl -X POST http://localhost:8000/admin/organizations/<ORG_ID>/tenants \
-  -H "X-API-Key: <ADMIN_KEY>" \
-  -d '{"name": "Demo Division", "slug": "demo-div"}'
-
-# 3. Generate API Key
-curl -X POST http://localhost:8000/admin/tenants/<TENANT_ID>/api-keys \
-  -H "X-API-Key: <ADMIN_KEY>" \
-  -d '{"name": "Dev Key", "reason": "Initial setup"}'
-```
-*Save the returned API Key (starts with `ak_`).*
-
-### 4. Submit a Job
-```bash
-curl -X POST "http://localhost:8000/v1/parse" \
-  -H "X-API-Key: ak_..." \
-  -F "file=@sample.pdf"
+python scripts/create_first_admin.py
 ```
 
-### 5. Check Status
+## Security and Isolation
+
+Multi-tenancy is not just an application-level filter but is enforced at the database level:
+
+1.  **Strict Isolation**: RLS policies prevent cross-tenant data access, even in the event of application-layer vulnerabilities.
+2.  **Audit Enforcement**: All administrative actions affecting system state are recorded in immutable logs.
+3.  **Scoped Identity**: Tenant-facing JWTs are strictly scoped to specific `tenant_id` and `organization_id` claims.
+
+## Verification
+
+To validate system integrity and tenant isolation, execute the end-to-end verification suite:
+
 ```bash
-curl -H "X-API-Key: ak_..." "http://localhost:8000/v1/jobs/<job_id>"
+python scripts/verify_phase1_e2e.py
 ```
 
-## 🔒 Security & RLS
+## System Dashboards
 
-Multi-Tenancy is enforced at the database level using PostgreSQL Row-Level Security.
-
-- **Isolation**: Tenant A cannot query Tenant B's jobs, even with SQL Injection.
-- **Authentication**: All requests require `X-API-Key`.
-- **Audit**: Admin actions (cross-tenant) are logged to `admin_audit_log` (Append-Only).
-
-To monitor security events:
-```bash
-./scripts/monitor_tenant_isolation.sh
-```
-
-## 🧪 Development & Testing
-
-Run the full suite including isolation tests:
-```bash
-# Verify Tenant Isolation
-python -m pytest tests/test_tenant_isolation.py -v
-
-# Run all tests
-python -m pytest tests/
-```
-
-- **Monitoring**: [http://localhost:5555](http://localhost:5555) (Flower)
-- **Metrics**: [http://localhost:9090](http://localhost:9090) (Prometheus)
+- **API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Monitoring Metrics**: [http://localhost:8000/metrics](http://localhost:8000/metrics)
+- **Grafana Visualization**: [http://localhost:3000](http://localhost:3000)
+- **Task Monitoring (Flower)**: [http://localhost:5555](http://localhost:5555)
