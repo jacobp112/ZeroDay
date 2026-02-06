@@ -1,6 +1,6 @@
 import uuid
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Body
 from sqlalchemy.orm import Session
@@ -11,8 +11,14 @@ from brokerage_parser.db import get_db
 from brokerage_parser.models.tenant import Organization, Tenant, ApiKey, AdminAuditLog
 from brokerage_parser.auth.admin import get_current_admin, AdminUser
 from brokerage_parser.core.audit import create_audit_log
+from brokerage_parser.core.audit import create_audit_log
 from brokerage_parser.core.security import get_password_hash
+from brokerage_parser.core.rate_limiter import RateLimiter
+from brokerage_parser.models import TenantRateLimit, UsageRecord
+from brokerage_parser.models.provisioning import ProvisioningRequest, ProvisioningStatus
+from brokerage_parser.provisioning.tasks import provision_tenant_task
 from brokerage_parser.config import settings
+from sqlalchemy.sql import func as sql_func
 
 router = APIRouter(prefix="/admin", tags=["Admin API"])
 
@@ -319,3 +325,202 @@ async def check_health_details(
         },
         "timestamp": datetime.now(timezone.utc)
     }
+
+# 6. Rate Limits
+
+class RateLimitResponse(BaseModel):
+    tenant_id: uuid.UUID
+    jobs_per_hour: int
+    api_calls_per_hour: int
+    concurrent_jobs: int
+    storage_gb_limit: int
+    custom_limits: Optional[dict] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class RateLimitUpdate(BaseModel):
+    jobs_per_hour: Optional[int] = None
+    api_calls_per_hour: Optional[int] = None
+    concurrent_jobs: Optional[int] = None
+    storage_gb_limit: Optional[int] = None
+    custom_limits: Optional[dict] = None
+
+@router.get("/tenants/{tenant_id}/rate-limits", response_model=RateLimitResponse)
+async def get_tenant_rate_limits(
+    tenant_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin)
+):
+    rate_limit = db.query(TenantRateLimit).get(tenant_id)
+    if not rate_limit:
+        # Return defaults if not found? Or 404?
+        # Usually return defaults if not explicitly set, but API implies managing overrides.
+        # If we return 404, frontend knows to create.
+        # But let's return a default object for UI convenience if we want, or 404.
+        # Let's return 404 to be strict.
+        raise HTTPException(status_code=404, detail="Rate limits not configured for this tenant")
+    return rate_limit
+
+@router.patch("/tenants/{tenant_id}/rate-limits", response_model=RateLimitResponse)
+async def update_tenant_rate_limits(
+    tenant_id: uuid.UUID,
+    limits_in: RateLimitUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin)
+):
+    # Check tenant exists
+    tenant = db.query(Tenant).get(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    rate_limit = db.query(TenantRateLimit).get(tenant_id)
+    if not rate_limit:
+        # Create
+        rate_limit = TenantRateLimit(
+            tenant_id=tenant_id,
+            jobs_per_hour=limits_in.jobs_per_hour or settings.RATE_LIMIT_DEFAULT_JOBS_PER_HOUR,
+            api_calls_per_hour=limits_in.api_calls_per_hour or settings.RATE_LIMIT_DEFAULT_API_CALLS_PER_HOUR,
+            concurrent_jobs=limits_in.concurrent_jobs or 5, # Default?
+            storage_gb_limit=limits_in.storage_gb_limit or 10,
+            custom_limits=limits_in.custom_limits or {}
+        )
+        db.add(rate_limit)
+        action = "RATELIMIT_CREATE"
+    else:
+        # Update
+        update_data = limits_in.dict(exclude_unset=True)
+        for field, value in update_data.items():
+            setattr(rate_limit, field, value)
+        rate_limit.updated_at = datetime.now(timezone.utc)
+        action = "RATELIMIT_UPDATE"
+
+    db.commit()
+    db.refresh(rate_limit)
+
+    # Audit
+    create_audit_log(
+        db, admin.email, action, request.client.host,
+        resource_id=str(tenant_id), tenant_id=str(tenant_id),
+        reason="Updated rate limits via Admin API"
+    )
+
+    return rate_limit
+
+@router.post("/tenants/{tenant_id}/rate-limits/reset", status_code=204)
+async def reset_tenant_rate_limits(
+    tenant_id: uuid.UUID,
+    request: Request,
+    limit_type: Optional[str] = Query(None, description="Specific limit type to reset (e.g. jobs, api_calls)"),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin)
+):
+    # Reset in Redis
+    limiter = RateLimiter() # New instance
+
+    types_to_reset = [limit_type] if limit_type else ["jobs", "api_calls"]
+
+    for l_type in types_to_reset:
+        limiter.reset_limits(str(tenant_id), l_type)
+
+    create_audit_log(
+        db, admin.email, "RATELIMIT_RESET", request.client.host,
+        resource_id=str(tenant_id), tenant_id=str(tenant_id),
+        reason=f"Reset rate limits ({limit_type or 'all'})"
+    )
+
+    return None
+
+# 7. Usage Stats
+
+class UsageRecordResponse(BaseModel):
+    date: date
+    jobs_count: int
+    api_calls_count: int
+    storage_bytes: int
+    compute_seconds: float
+
+    class Config:
+        from_attributes = True
+
+@router.get("/tenants/{tenant_id}/usage-history", response_model=List[UsageRecordResponse])
+async def get_tenant_usage_history(
+    tenant_id: uuid.UUID,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin)
+):
+    query = db.query(UsageRecord).filter(UsageRecord.tenant_id == tenant_id)
+
+    if start_date:
+        query = query.filter(UsageRecord.date >= start_date)
+    if end_date:
+        query = query.filter(UsageRecord.date <= end_date)
+
+
+    return query.order_by(desc(UsageRecord.date)).all()
+
+# 8. Provisioning
+
+class ProvisioningRequestCreate(BaseModel):
+    org_name: str
+    admin_email: EmailStr
+    org_slug: str = Field(..., min_length=3, pattern="^[a-z0-9-]+$")
+
+class ProvisioningStatusResponse(BaseModel):
+    request_id: uuid.UUID
+    status: ProvisioningStatus
+    created_at: datetime
+    completed_at: Optional[datetime]
+    error_message: Optional[str]
+    result_data: Optional[dict]
+
+    class Config:
+        from_attributes = True
+
+@router.post("/provisioning", response_model=ProvisioningStatusResponse, status_code=202)
+async def provision_tenant(
+    req_in: ProvisioningRequestCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin)
+):
+    # Check if slug exists already in Org table?
+    if db.query(Organization).filter(Organization.slug == req_in.org_slug).first():
+        raise HTTPException(status_code=400, detail="Organization slug already taken")
+
+    # Create Request
+    req = ProvisioningRequest(
+        org_name=req_in.org_name,
+        org_slug=req_in.org_slug,
+        admin_email=req_in.admin_email,
+        status=ProvisioningStatus.PENDING
+    )
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+
+    # Trigger Task
+    provision_tenant_task.delay(str(req.request_id))
+
+    create_audit_log(
+        db, admin.email, "PROVISION_INIT", request.client.host,
+        resource_id=str(req.request_id),
+        reason=f"Started provisioning for {req.org_name}"
+    )
+
+    return req
+
+@router.get("/provisioning/{request_id}", response_model=ProvisioningStatusResponse)
+async def get_provisioning_status(
+    request_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin)
+):
+    req = db.query(ProvisioningRequest).get(request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    return req

@@ -23,7 +23,10 @@ from brokerage_parser.models import Job, JobStatus
 from brokerage_parser.config import settings
 from brokerage_parser.worker import process_statement_task
 from brokerage_parser.core.middleware import TenantContextMiddleware
+from brokerage_parser.core.middleware import TenantContextMiddleware
 from brokerage_parser.monitoring.metrics import PrometheusMiddleware
+from brokerage_parser.metering.collector import UsageCollector
+from brokerage_parser.models.metering import UsageEventType
 from brokerage_parser.core.middleware import TenantContextMiddleware
 # from brokerage_parser.routers import admin # Admin CRUD not ready yet
 from brokerage_parser.auth import admin as auth_admin
@@ -156,12 +159,22 @@ async def parse_statement_async(
     file: UploadFile = File(...),
     idempotency_key: Optional[str] = Header(None),
     client_id: str = Depends(get_client_id),
-    db: Session = Depends(get_db)
+
+    db: Session = Depends(get_db),
+    request: Request = None, # For Tenant ID
 ):
     """
     Submit a brokerage statement for async processing.
     Returns a Job ID immediately.
     """
+    # Record API Call
+    if hasattr(request.state, "tenant_id"):
+        UsageCollector(db).record_event(
+            tenant_id=request.state.tenant_id,
+            event_type=UsageEventType.API_CALL,
+            quantity=1
+        )
+
     # 1. Idempotency Check
     if idempotency_key:
         existing_job = db.query(Job).filter(

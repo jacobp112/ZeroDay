@@ -32,6 +32,18 @@ ACTIVE_JOBS = Gauge(
     ["tenant_id"]
 )
 
+RATE_LIMIT_HITS = Counter(
+    "parsefin_rate_limit_hits_total",
+    "Total number of rate limit checks by result (allowed/denied)",
+    ["tenant_id", "limit_type", "result"]
+)
+
+USAGE_EVENTS = Counter(
+    "parsefin_usage_events_total",
+    "Total usage events recorded",
+    ["tenant_id", "event_type"]
+)
+
 class PrometheusMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable):
         start_time = time.time()

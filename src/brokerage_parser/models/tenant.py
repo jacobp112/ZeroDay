@@ -55,7 +55,7 @@ class AdminAuditLog(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     admin_user_id = Column(String(255), nullable=False, index=True)
     action = Column(String(255), nullable=False)
-    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True) # Logical link, strictly FK might be tricky if bypassing RLS? No, FK is fine.
+    tenant_id = Column(UUID(as_uuid=True), nullable=True, index=True) # Logical link, strictly FK might be tricky if bypassing RLS? No, FK is fine.
     # Actually, if we audit access to a tenant that gets deleted, do we want to keep the log?
     # Yes, Audit Logs should stick around. So NO FK or ON DELETE SET NULL?
     # Requirement: "Retention Policy... 7 years".

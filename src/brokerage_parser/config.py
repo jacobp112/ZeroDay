@@ -49,6 +49,24 @@ class Settings(BaseSettings):
     REQUIRE_AUDIT_REASON: bool = True
     AUDIT_LOG_RETENTION_DAYS: int = 2555 # 7 years
 
+    # Phase 2: Operational Excellence
+    # Rate Limiting
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_DEFAULT_JOBS_PER_HOUR: int = 100
+    RATE_LIMIT_DEFAULT_API_CALLS_PER_HOUR: int = 1000
+    RATE_LIMIT_DEFAULT_CONCURRENT_JOBS: int = 5
+
+    # Email Service
+    EMAIL_PROVIDER: Optional[str] = None  # smtp, sendgrid, ses, or None (fallback)
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SENDGRID_API_KEY: Optional[str] = None
+    AWS_SES_REGION: Optional[str] = None
+    FROM_EMAIL: str = "noreply@parsefin.io"
+    SUPPORT_EMAIL: str = "support@parsefin.io"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 settings = Settings()

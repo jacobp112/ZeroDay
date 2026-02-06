@@ -13,6 +13,7 @@ from brokerage_parser.models.tenant import Organization, Tenant, ApiKey, AdminAu
 from brokerage_parser.models.job import Job, JobStatus
 from brokerage_parser.core.security import get_password_hash
 from brokerage_parser.config import settings
+from brokerage_parser.models import TenantRateLimit, UsageEvent, UsageRecord, UsageEventType
 import secrets
 
 logger = logging.getLogger("portal-api")
@@ -39,6 +40,15 @@ class ApiKeyResponse(BaseModel):
 
 class ApiKeyCreate(BaseModel):
     name: str
+
+class PortalRateLimitResponse(BaseModel):
+    jobs_per_hour: int
+    api_calls_per_hour: int
+    concurrent_jobs: int
+    storage_gb_limit: int
+
+    class Config:
+        from_attributes = True
 
 class ApiKeySecretResponse(ApiKeyResponse):
     secret_key: str
@@ -135,6 +145,22 @@ async def revoke_key(
     db.commit()
     return None
 
+@router.get("/rate-limits", response_model=PortalRateLimitResponse)
+async def get_my_rate_limits(
+    user: PortalUser = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    rate_limit = db.query(TenantRateLimit).get(user.tenant_id)
+    if not rate_limit:
+        # Return defaults if not configured
+        return {
+            "jobs_per_hour": settings.RATE_LIMIT_DEFAULT_JOBS_PER_HOUR,
+            "api_calls_per_hour": settings.RATE_LIMIT_DEFAULT_API_CALLS_PER_HOUR,
+            "concurrent_jobs": 5,
+            "storage_gb_limit": 10
+        }
+    return rate_limit
+
 # 3. Usage
 
 @router.get("/usage", response_model=UsageStats)
@@ -145,15 +171,59 @@ async def get_usage(
     # Mock usage calculation for now or query DB
     # Real implementation would query request logs/jobs
 
-    # Jobs this month
+    # Real Usage Calculation
     now = datetime.utcnow()
     month_start = datetime(now.year, now.month, 1)
 
-    jobs_count = db.query(Job).filter(
-        # Job model doesn't have tenant_id column! It uses Client ID (hash of key).
-        # We need to link Jobs to Tenancy.
-        Job.status != JobStatus.FAILED # Just a dummy filter to avoid syntax error if I used tenant_id
-    ).count()
+    # 1. Aggregated (This Month)
+    # Note: UsageRecord is daily.
+    aggregated = db.query(
+        func.sum(UsageRecord.jobs_count).label("jobs"),
+        func.sum(UsageRecord.api_calls_count).label("api_calls")
+        # Storage is cumulative over time, so we need different queries for storage vs monthly activity
+    ).filter(
+        UsageRecord.tenant_id == user.tenant_id,
+        UsageRecord.date >= month_start.date()
+    ).first()
+
+    jobs_agg = aggregated.jobs or 0
+    api_agg = aggregated.api_calls or 0
+
+    # 2. Unaggregated (This Month)
+    unagg = db.query(
+        UsageEvent.event_type,
+        func.sum(UsageEvent.quantity).label("total")
+    ).filter(
+        UsageEvent.tenant_id == user.tenant_id,
+        UsageEvent.aggregated_at.is_(None),
+        UsageEvent.timestamp >= month_start
+    ).group_by(UsageEvent.event_type).all()
+
+    jobs_unagg = 0
+    api_unagg = 0
+
+    # Map Unaggregated
+    for etype, total in unagg:
+        if etype == UsageEventType.JOB_SUBMITTED:
+             jobs_unagg += int(total)
+        elif etype == UsageEventType.API_CALL:
+             api_unagg += int(total)
+
+    # 3. Total Storage (All Time)
+    # Sum all records + unaggregated storage events
+    storage_agg = db.query(func.sum(UsageRecord.storage_bytes)).filter(
+        UsageRecord.tenant_id == user.tenant_id
+    ).scalar() or 0
+
+    # Unaggregated storage (MB -> Bytes)
+    storage_unagg_mb = db.query(func.sum(UsageEvent.quantity)).filter(
+        UsageEvent.tenant_id == user.tenant_id,
+        UsageEvent.aggregated_at.is_(None),
+        UsageEvent.event_type == UsageEventType.STORAGE_USED
+    ).scalar() or 0
+
+    total_storage_bytes = storage_agg + (float(storage_unagg_mb) * 1024 * 1024)
+    total_storage_mb = total_storage_bytes / (1024 * 1024)
 
     # Active keys
     active_keys = db.query(ApiKey).filter(
@@ -162,9 +232,9 @@ async def get_usage(
     ).count()
 
     return {
-        "jobs_this_month": 124, # Dummy
-        "api_calls_this_month": 5430, # Dummy
-        "storage_used_mb": 45.2, # Dummy
+        "jobs_this_month": jobs_agg + jobs_unagg,
+        "api_calls_this_month": api_agg + api_unagg,
+        "storage_used_mb": round(total_storage_mb, 2),
         "active_keys": active_keys
     }
 
@@ -242,3 +312,26 @@ async def update_settings(
 ):
     # Update webhook_url if schema existed
     return {"status": "updated (mock)"}
+
+class UsageRecordResponse(BaseModel):
+    date: datetime # or date, but pydantic handles it
+    jobs_count: int
+    api_calls_count: int
+    storage_bytes: int
+    compute_seconds: float
+
+    class Config:
+        from_attributes = True
+
+@router.get("/usage/history", response_model=List[UsageRecordResponse])
+async def get_my_usage_history(
+    user: PortalUser = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    # Return last 30 days history
+    # Query UsageRecords
+    records = db.query(UsageRecord).filter(
+        UsageRecord.tenant_id == user.tenant_id
+    ).order_by(desc(UsageRecord.date)).limit(30).all()
+
+    return records

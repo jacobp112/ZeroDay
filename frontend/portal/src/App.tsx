@@ -5,9 +5,9 @@ import Layout from '@/components/Layout';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Keys from '@/pages/Keys';
+import Usage from '@/pages/Usage';
 
 // Placeholders
-const Usage = () => <div>Usage Page (Coming Soon)</div>;
 const Jobs = () => <div>Jobs Page (Coming Soon)</div>;
 const Settings = () => <div>Settings Page (Coming Soon)</div>;
 

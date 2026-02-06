@@ -9,6 +9,7 @@ import Organizations from '@/pages/Organizations';
 import Tenants from '@/pages/Tenants';
 import ApiKeys from '@/pages/ApiKeys';
 import AuditLog from '@/pages/AuditLog';
+import Provision from '@/pages/Provision';
 
 const queryClient = new QueryClient();
 
@@ -32,6 +33,7 @@ function AppRoutes() {
         <Route path="tenants" element={<Tenants />} />
         <Route path="api-keys" element={<ApiKeys />} />
         <Route path="audit-log" element={<AuditLog />} />
+        <Route path="provision" element={<Provision />} />
       </Route>
     </Routes>
   );
